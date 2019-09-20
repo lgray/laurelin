@@ -63,6 +63,8 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
      */
     static class TTreeDataSourceV2Partition implements InputPartition<ColumnarBatch> {
         private static final long serialVersionUID = -6598704946339913432L;
+	private String path;
+	private String treeName;
         private StructType schema;
         private long entryStart;
         private long entryEnd;
@@ -72,13 +74,14 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
         private CollectionAccumulator<Storage> profileData;
         private int pid;
 
-        public TTreeDataSourceV2Partition(StructType schema, CacheFactory basketCacheFactory, long entryStart, long entryEnd, Map<String, SlimTBranch> slimBranches, int threadCount, CollectionAccumulator<Storage> profileData, int pid) {
+        public TTreeDataSourceV2Partition(String path, String treeName, StructType schema, CacheFactory basketCacheFactory, long entryStart, long entryEnd, int threadCount, CollectionAccumulator<Storage> profileData, int pid) {
             logger.trace("dsv2partition new");
+	    this.path = path;
+	    this.treeName = treeName;
             this.schema = schema;
             this.basketCacheFactory = basketCacheFactory;
             this.entryStart = entryStart;
             this.entryEnd = entryEnd;
-            this.slimBranches = slimBranches;
             this.threadCount = threadCount;
             this.profileData = profileData;
             this.pid = pid;
@@ -87,7 +90,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
         @Override
         public InputPartitionReader<ColumnarBatch> createPartitionReader() {
             logger.trace("input partition reader");
-            return new TTreeDataSourceV2PartitionReader(basketCacheFactory, schema, entryStart, entryEnd, slimBranches, threadCount, profileData, pid);
+            return new TTreeDataSourceV2PartitionReader(path, treeName, basketCacheFactory, schema, entryStart, entryEnd, threadCount, profileData, pid);
         }
 
         public void setPid(int pid) {
@@ -96,6 +99,8 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
     }
 
     static class TTreeDataSourceV2PartitionReader implements InputPartitionReader<ColumnarBatch> {
+	private String path;
+	private String treeName;
         private Cache basketCache;
         private StructType schema;
         private long entryStart;
@@ -107,15 +112,41 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
         private int pid;
         private static ROOTFileCache fileCache = new ROOTFileCache();
 
-        public TTreeDataSourceV2PartitionReader(CacheFactory basketCacheFactory, StructType schema, long entryStart, long entryEnd, Map<String, SlimTBranch> slimBranches, int threadCount, CollectionAccumulator<Storage> profileData, int pid) {
+	private static void parseStructFields(TTree inputTree, Map<String, SlimTBranch> slimBranches, StructType struct, String namespace) {
+	    for (StructField field: struct.fields())  {
+		if (field.dataType() instanceof StructType) {
+		    parseStructFields(inputTree, slimBranches, (StructType) field.dataType(), namespace + field.name() + ".");
+		}
+		ArrayList<TBranch> branchList = inputTree.getBranches(namespace + field.name());
+		assert branchList.size() == 1;
+		TBranch fatBranch = branchList.get(0);
+		SlimTBranch slimBranch = SlimTBranch.getFromTBranch(fatBranch);
+		slimBranches.put(fatBranch.getName(), slimBranch);
+	    }
+	}
+
+        public TTreeDataSourceV2PartitionReader(String path, String treeName, CacheFactory basketCacheFactory, StructType schema, long entryStart, long entryEnd, int threadCount, CollectionAccumulator<Storage> profileData, int pid) {
+	    this.path = path;
+	    this.treeName = treeName;
             this.basketCache = basketCacheFactory.getCache();
             this.schema = schema;
             this.entryStart = entryStart;
             this.entryEnd = entryEnd;
-            this.slimBranches = slimBranches;
             this.profileData = profileData;
             this.pid = pid;
 
+	    try {
+		logger.warn(path);
+
+		TFile inputFile = TFile.getFromFile(path);
+		TTree inputTree = new TTree(inputFile.getProxy(treeName), inputFile);
+		
+		this.slimBranches = new HashMap<String, SlimTBranch>();		
+		parseStructFields(inputTree, this.slimBranches, this.schema, "");
+	    } catch (Exception e) {
+		throw new RuntimeException(e);
+	    }
+	    
             Function<Event, Integer> cb = null;
             if (this.profileData != null) {
                 cb = e -> {
@@ -362,31 +393,20 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
                 TTree inputTree;
                 try (TFile inputFile = TFile.getFromFile(path)) {
                     inputTree = new TTree(inputFile.getProxy(treeName), inputFile);
-
-		    Map<String, SlimTBranch> slimBranches = new HashMap<String, SlimTBranch>();		
-		    parseStructFields(inputTree, slimBranches, schema, "");
-		    
-		    
 		    // TODO We partition based on the basketing of the first branch
 		    //      which might not be optimal. We should do something
 		    //      smarter later
-		    long[] entryOffset = inputTree.getBranches().get(0).getBasketEntryOffsets();
-		    for (int i = 0; i < (entryOffset.length - 1); i += 1) {
-			pid += 1;
-			long entryStart = entryOffset[i];
-			long entryEnd = entryOffset[i + 1];
-			// the last basket is dumb and annoying
-			if (i == (entryOffset.length - 1)) {
-			    entryEnd = inputTree.getEntries();
-			}
-			
-			ret.add(new TTreeDataSourceV2Partition(schema, basketCacheFactory, entryStart, entryEnd, slimBranches, threadCount, profileData, pid));
-		    }
+		    // 1 file -> 1 partition for now
+		    long entryEnd = inputTree.getEntries();
+		    
+		    if( entryEnd > 0 ) {
+			ret.add(new TTreeDataSourceV2Partition(path, treeName, schema, basketCacheFactory, 0, entryEnd, threadCount, profileData, pid));
+		    }		    
 		    if (ret.size() == 0) {
 			// Only one basket?
 			logger.debug("Planned for zero baskets, adding a dummy one");
 			pid += 1;
-			ret.add(new TTreeDataSourceV2Partition(schema, basketCacheFactory, 0, inputTree.getEntries(), slimBranches, threadCount, profileData, pid));
+			ret.add(new TTreeDataSourceV2Partition(path, treeName, schema, basketCacheFactory, 0, inputTree.getEntries(), threadCount, profileData, pid));
 		    }
 		} catch (Exception e) {
 		    throw new RuntimeException(e);
@@ -403,23 +423,23 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
         public List<InputPartition<ColumnarBatch>> planBatchInputPartitions() {
             logger.trace("planbatchinputpartitions");
             List<InputPartition<ColumnarBatch>> ret = new ArrayList<InputPartition<ColumnarBatch>>();
-            if (sparkContext == null) {
-                for (String path: paths) {
-                    partitionSingleFile(path).forEachRemaining(ret::add);;
-                }
-            } else {
-                JavaSparkContext sc = JavaSparkContext.fromSparkContext(sparkContext);
-                JavaRDD<String> rdd_paths = sc.parallelize(paths, paths.size());
-                PartitionHelper helper = new PartitionHelper(treeName, schema, threadCount, basketCacheFactory);
-                JavaRDD<InputPartition<ColumnarBatch>> partitions = rdd_paths.flatMap(helper.getLambda());
-                ret = partitions.collect();
-            }
-            int pid = 0;
-            for (InputPartition<ColumnarBatch> x: ret) {
-                ((TTreeDataSourceV2Partition)x).setPid(pid);
-                pid += 1;
-            }
-            return ret;
+	    if (sparkContext == null) {
+		for (String path: paths) {
+		    partitionSingleFile(path).forEachRemaining(ret::add);;
+		}
+	    } else {
+		JavaSparkContext sc = JavaSparkContext.fromSparkContext(sparkContext);
+		JavaRDD<String> rdd_paths = sc.parallelize(paths, paths.size());
+		PartitionHelper helper = new PartitionHelper(treeName, schema, threadCount, basketCacheFactory);
+		JavaRDD<InputPartition<ColumnarBatch>> partitions = rdd_paths.flatMap(helper.getLambda());
+		ret = partitions.collect();
+	    }
+	    int pid = 0;
+	    for (InputPartition<ColumnarBatch> x: ret) {
+		((TTreeDataSourceV2Partition)x).setPid(pid);
+		pid += 1;
+	    }
+	    return ret;
         }
 
         public Iterator<InputPartition<ColumnarBatch>> partitionSingleFile(String path) {
