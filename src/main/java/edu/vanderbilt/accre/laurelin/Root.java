@@ -214,12 +214,12 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
                 for (String path: options.paths()) {
                     this.paths.addAll(IOFactory.expandPathToList(path));
                 }
-                // FIXME - More than one file, please
+	        // Only ever open one file at the driver and deserialize as little as possible 
                 currFile = TFile.getFromFile(fileCache.getROOTFile(this.paths.get(0)));
                 treeName = options.get("tree").orElse("Events");
                 currTree = new TTree(currFile.getProxy(treeName), currFile);
                 this.basketCacheFactory = basketCacheFactory;
-                this.schema = readSchemaPriv();
+		this.schema = readSchemaPriv();		
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -337,12 +337,12 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
             CacheFactory basketCacheFactory;
 
             public PartitionHelper(String treeName, StructType schema, int threadCount, CacheFactory basketCacheFactory) {
-                this.treeName = treeName;
-                this.schema = schema;
+                this.treeName = treeName; 
+		this.schema = schema;
                 this.threadCount = threadCount;
                 this.basketCacheFactory = basketCacheFactory;
-            }
-
+	    }
+	    
             private static void parseStructFields(TTree inputTree, Map<String, SlimTBranch> slimBranches, StructType struct, String namespace) {
                 for (StructField field: struct.fields())  {
                     if (field.dataType() instanceof StructType) {
@@ -362,35 +362,35 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
                 TTree inputTree;
                 try (TFile inputFile = TFile.getFromFile(path)) {
                     inputTree = new TTree(inputFile.getProxy(treeName), inputFile);
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
 
-                Map<String, SlimTBranch> slimBranches = new HashMap<String, SlimTBranch>();
-                parseStructFields(inputTree, slimBranches, schema, "");
-
-
-                // TODO We partition based on the basketing of the first branch
-                //      which might not be optimal. We should do something
-                //      smarter later
-                long[] entryOffset = inputTree.getBranches().get(0).getBasketEntryOffsets();
-                for (int i = 0; i < (entryOffset.length - 1); i += 1) {
-                    pid += 1;
-                    long entryStart = entryOffset[i];
-                    long entryEnd = entryOffset[i + 1];
-                    // the last basket is dumb and annoying
-                    if (i == (entryOffset.length - 1)) {
-                        entryEnd = inputTree.getEntries();
-                    }
-
-                    ret.add(new TTreeDataSourceV2Partition(schema, basketCacheFactory, entryStart, entryEnd, slimBranches, threadCount, profileData, pid));
-                }
-                if (ret.size() == 0) {
-                    // Only one basket?
-                    logger.debug("Planned for zero baskets, adding a dummy one");
-                    pid += 1;
-                    ret.add(new TTreeDataSourceV2Partition(schema, basketCacheFactory, 0, inputTree.getEntries(), slimBranches, threadCount, profileData, pid));
-                }
+		    Map<String, SlimTBranch> slimBranches = new HashMap<String, SlimTBranch>();		
+		    parseStructFields(inputTree, slimBranches, schema, "");
+		    
+		    
+		    // TODO We partition based on the basketing of the first branch
+		    //      which might not be optimal. We should do something
+		    //      smarter later
+		    long[] entryOffset = inputTree.getBranches().get(0).getBasketEntryOffsets();
+		    for (int i = 0; i < (entryOffset.length - 1); i += 1) {
+			pid += 1;
+			long entryStart = entryOffset[i];
+			long entryEnd = entryOffset[i + 1];
+			// the last basket is dumb and annoying
+			if (i == (entryOffset.length - 1)) {
+			    entryEnd = inputTree.getEntries();
+			}
+			
+			ret.add(new TTreeDataSourceV2Partition(schema, basketCacheFactory, entryStart, entryEnd, slimBranches, threadCount, profileData, pid));
+		    }
+		    if (ret.size() == 0) {
+			// Only one basket?
+			logger.debug("Planned for zero baskets, adding a dummy one");
+			pid += 1;
+			ret.add(new TTreeDataSourceV2Partition(schema, basketCacheFactory, 0, inputTree.getEntries(), slimBranches, threadCount, profileData, pid));
+		    }
+		} catch (Exception e) {
+		    throw new RuntimeException(e);
+		}
                 return ret.iterator();
             }
 
