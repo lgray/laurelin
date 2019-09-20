@@ -37,15 +37,17 @@ public class SlimTBranch implements Serializable {
     }
 
     public static SlimTBranch getFromTBranch(TBranch fatBranch) {
-        SlimTBranch slimBranch = new SlimTBranch(fatBranch.getTree().getBackingFile().getFileName(), fatBranch.getBasketEntryOffsets(), fatBranch.getArrayDescriptor());
+        SlimTBranch slimBranch = new SlimTBranch(fatBranch.getTree().getBackingFile().getFileName(), 
+						 fatBranch.getBasketEntryOffsets(), 
+						 fatBranch.getArrayDescriptor());
         for (TBasket basket: fatBranch.getBaskets()) {
             SlimTBasket slimBasket = new SlimTBasket(slimBranch,
-                                                        basket.getAbsoluteOffset(),
-                                                        basket.getBasketBytes() - basket.getKeyLen(),
-                                                        basket.getObjLen(),
-                                                        basket.getKeyLen(),
-                                                        basket.getLast()
-                                                        );
+						     basket.getAbsoluteOffset(),
+						     basket.getBasketBytes() - basket.getKeyLen(),
+						     basket.getObjLen(),
+						     basket.getKeyLen(),
+						     basket.getLast()
+						     );
             slimBranch.addBasket(slimBasket);
         }
         return slimBranch;

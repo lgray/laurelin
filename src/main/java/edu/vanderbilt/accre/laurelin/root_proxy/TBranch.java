@@ -68,7 +68,7 @@ public class TBranch {
 
         branches = new ArrayList<TBranch>();
         if (getClass().equals(TBranch.class)) {
-            baskets = new ArrayList<TBasket>();
+            baskets = null; // baskets will be evaluated lazily
             leaves = new ArrayList<TLeaf>();
             isBranch = true;
             ProxyArray fBranches = (ProxyArray) data.getProxy("fBranches");
@@ -89,34 +89,6 @@ public class TBranch {
                     continue;
                 }
                 leaves.add(leaf);
-            }
-
-            /*
-             * Instead of being in the ObjArray of fBaskets, ROOT stores the baskets in separate
-             * toplevel entries in the file
-             *     Int_t      *fBasketBytes;      ///<[fMaxBaskets] Length of baskets on file
-             *     Long64_t   *fBasketEntry;      ///<[fMaxBaskets] Table of first entry in each basket
-             *     Long64_t   *fBasketSeek;       ///<[fMaxBaskets] Addresses of baskets on file
-             */
-            int fMaxBaskets = (int) data.getScalar("fMaxBaskets").getVal();
-            int[] fBasketBytes = (int[]) data.getScalar("fBasketBytes").getVal();
-            long[] fBasketEntry = (long[]) data.getScalar("fBasketEntry").getVal();
-            long[] fBasketSeek = (long[]) data.getScalar("fBasketSeek").getVal();
-            baskets = new ArrayList<TBasket>();
-            TFile backing = tree.getBackingFile();
-            for (int i = 0; i < fMaxBaskets; i += 1) {
-                Cursor c;
-                if (fBasketSeek[i] == 0) {
-                    // An empty basket?
-                    continue;
-                }
-                try {
-                    c = backing.getCursorAt(fBasketSeek[i]);
-                    TBasket b = TBasket.getFromFile(c, fBasketBytes[i], fBasketEntry[i], fBasketSeek[i]);
-                    baskets.add(b);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
             }
         } else {
             isBranch = false;
@@ -176,8 +148,42 @@ public class TBranch {
         return fType;
     }
 
+    private ArrayList<TBasket> lazyGetBaskets() {
+	/*
+	 * Instead of being in the ObjArray of fBaskets, ROOT stores the baskets in separate
+	 * toplevel entries in the file
+	 *     Int_t      *fBasketBytes;      ///<[fMaxBaskets] Length of baskets on file
+	 *     Long64_t   *fBasketEntry;      ///<[fMaxBaskets] Table of first entry in each basket
+	 *     Long64_t   *fBasketSeek;       ///<[fMaxBaskets] Addresses of baskets on file
+	 */
+	int fMaxBaskets = (int) this.data.getScalar("fMaxBaskets").getVal();
+	int[] fBasketBytes = (int[]) this.data.getScalar("fBasketBytes").getVal();
+	long[] fBasketEntry = (long[]) this.data.getScalar("fBasketEntry").getVal();
+	long[] fBasketSeek = (long[]) this.data.getScalar("fBasketSeek").getVal();
+	ArrayList<TBasket> thebaskets = new ArrayList<TBasket>();
+	TFile backing = this.tree.getBackingFile();
+	for (int i = 0; i < fMaxBaskets; i += 1) {
+	    Cursor c;
+	    if (fBasketSeek[i] == 0) {
+		// An empty basket?
+		continue;
+	    }
+	    try {
+		c = backing.getCursorAt(fBasketSeek[i]);
+		TBasket b = TBasket.getFromFile(c, fBasketBytes[i], fBasketEntry[i], fBasketSeek[i]);
+		thebaskets.add(b);
+	    } catch (IOException e) {
+		throw new RuntimeException(e);
+	    }
+	}
+	return thebaskets;
+    }
+
     public List<TBasket> getBaskets() {
-        return baskets;
+	if( this.baskets == null ) {
+	    this.baskets = lazyGetBaskets();
+	}	
+        return this.baskets;
     }
 
     /*
@@ -364,7 +370,7 @@ public class TBranch {
     }
 
     public long[] getBasketEntryOffsets() {
-        int basketCount = baskets.size();
+        int basketCount = getBaskets().size();
         // The array processing code wants a final entry to cap the last true
         // basket from above
         long []ret = new long[basketCount + 1];
