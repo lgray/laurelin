@@ -250,7 +250,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
                 treeName = options.get("tree").orElse("Events");
                 currTree = new TTree(currFile.getProxy(treeName), currFile);
                 this.basketCacheFactory = basketCacheFactory;
-		this.schema = readSchemaPriv();		
+		this.schema = readSchemaPriv();
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -400,6 +400,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
 		    long entryEnd = inputTree.getEntries();
 		    
 		    if( entryEnd > 0 ) {
+			pid+=1;
 			ret.add(new TTreeDataSourceV2Partition(path, treeName, schema, basketCacheFactory, 0, entryEnd, threadCount, profileData, pid));
 		    }		    
 		    if (ret.size() == 0) {
@@ -430,7 +431,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
 	    } else {
 		JavaSparkContext sc = JavaSparkContext.fromSparkContext(sparkContext);
 		JavaRDD<String> rdd_paths = sc.parallelize(paths, paths.size());
-		PartitionHelper helper = new PartitionHelper(treeName, schema, threadCount, basketCacheFactory);
+		PartitionHelper helper = new PartitionHelper(this.treeName, this.schema, threadCount, basketCacheFactory);
 		JavaRDD<InputPartition<ColumnarBatch>> partitions = rdd_paths.flatMap(helper.getLambda());
 		ret = partitions.collect();
 	    }
@@ -443,13 +444,13 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
         }
 
         public Iterator<InputPartition<ColumnarBatch>> partitionSingleFile(String path) {
-            return PartitionHelper.partitionSingleFileImpl(path, treeName, schema, threadCount, basketCacheFactory);
+            return PartitionHelper.partitionSingleFileImpl(path, treeName, this.schema, threadCount, basketCacheFactory);
         }
-
+	
         @Override
         public void pruneColumns(StructType requiredSchema) {
             logger.trace("prunecolumns ");
-            schema = requiredSchema;
+            this.schema = requiredSchema;
         }
 
     }
