@@ -149,4 +149,8 @@ public class TFile {
     public String getFileName() {
         return fileName;
     }
+
+    public void close() throws Exception {
+	fh.close();
+    }
 }

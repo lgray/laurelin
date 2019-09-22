@@ -4,8 +4,8 @@ import edu.vanderbilt.accre.laurelin.root_proxy.ROOTException.UnsupportedBranchT
 
 public class TLeaf extends TBranch {
 
-    public TLeaf(Proxy data, TTree tree, TBranch parent) {
-        super(data, tree, parent);
+    public TLeaf(Proxy data, TTree tree, TBranch parent, long entryStart, long entryStop) {
+        super(data, tree, parent, entryStart, entryStop);
     }
 
     @Override

@@ -28,18 +28,24 @@ public class SlimTBranch implements Serializable {
     private long []basketEntryOffsets;
     private List<SlimTBasket> baskets;
     private TBranch.ArrayDescriptor arrayDesc;
+    private int basketStartOffset;
+    private int maxBasket;
 
-    public SlimTBranch(String path, long []basketEntryOffsets, TBranch.ArrayDescriptor desc) {
+    public SlimTBranch(String path, long []basketEntryOffsets, TBranch.ArrayDescriptor desc, int basketStartOffset, int maxBasket) {
         this.path = path;
         this.basketEntryOffsets = basketEntryOffsets;
         this.baskets = new LinkedList<SlimTBasket>();
         this.arrayDesc = desc;
+	this.basketStartOffset = basketStartOffset;
+	this.maxBasket = maxBasket;
     }
 
     public static SlimTBranch getFromTBranch(TBranch fatBranch) {
         SlimTBranch slimBranch = new SlimTBranch(fatBranch.getTree().getBackingFile().getFileName(), 
-						 fatBranch.getBasketEntryOffsets(), 
-						 fatBranch.getArrayDescriptor());
+						 fatBranch.getBasketEntryOffsets(),
+						 fatBranch.getArrayDescriptor(),
+						 fatBranch.getBasketStart(),
+						 fatBranch.getBasketStop());
         for (TBasket basket: fatBranch.getBaskets()) {
             SlimTBasket slimBasket = new SlimTBasket(slimBranch,
 						     basket.getAbsoluteOffset(),
@@ -58,7 +64,19 @@ public class SlimTBranch implements Serializable {
     }
 
     public SlimTBasket getBasket(int basketid) {
-        return baskets.get(basketid);
+	//System.out.print("\tGetting basketid: ");
+	//System.out.print(basketid);
+	//System.out.print("\n");
+	int relative_basket = basketid;
+	if( this.basketStartOffset > -1 ) {
+	    assert (this.maxBasket == -1 || basketid < this.maxBasket);
+	    relative_basket = basketid - this.basketStartOffset;
+	}
+	//System.out.print("\tGetting relative basketid: ");
+        //System.out.print(relative_basket);
+        //System.out.print("\n");
+
+        return baskets.get(relative_basket);
     }
 
     public void addBasket(SlimTBasket basket) {

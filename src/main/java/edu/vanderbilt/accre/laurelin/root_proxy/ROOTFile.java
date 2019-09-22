@@ -202,4 +202,8 @@ public class ROOTFile {
     public Cursor getCursor(long off) {
         return new Cursor(new FileBackedBuf(this), off);
     }
+
+    public void close() throws IOException {
+	this.fh.close();
+    }
 }

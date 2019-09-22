@@ -38,7 +38,7 @@ public class TBasket {
         fHeaderOnly = c.readChar();
         headerEnd = c;
     }
-
+    
     public static TBasket getFromFile(Cursor cursor, int fBasketBytes, long fBasketEntry, long fBasketSeek) throws IOException {
         TBasket ret = new TBasket(cursor, fBasketBytes, fBasketEntry, fBasketSeek);
         return ret;
