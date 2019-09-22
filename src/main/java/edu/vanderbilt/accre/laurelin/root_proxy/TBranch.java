@@ -185,10 +185,10 @@ public class TBranch {
         this.fBasketSeek = (long[]) this.data.getScalar("fBasketSeek").getVal();
 
 	long[] offsets = new long[this.fMaxBaskets + 1];
-	System.arraycopy(this.fBasketEntry, 0,
-			 offsets, 0,
-			 this.fMaxBaskets);
-        offsets[this.fMaxBaskets] = tree.getEntries();
+        for (int i = 0; i < this.fMaxBaskets; i += 1) {
+            offsets[i] = this.fBasketEntry[i];
+        }
+        offsets[this.fMaxBaskets] = this.tree.getEntries();
 	
 	for (int i = 0; i < this.fMaxBaskets; ++i) {
             if( this.entryStart != -1 && offsets[i+1] < this.entryStart) continue;
@@ -436,10 +436,10 @@ public class TBranch {
 	if( this.fMaxBaskets == -1 ) { lazyGetBasketDescription(); }
         // The array processing code wants a final entry to cap the last true
         // basket from above
-        long []ret = new long[this.fMaxBaskets + 1];
-        System.arraycopy(this.fBasketEntry, 0,
-			 ret, 0,
-                         this.fMaxBaskets);
+	long []ret = new long[this.fMaxBaskets + 1];
+        for (int i = 0; i < this.fMaxBaskets; i += 1) {
+            ret[i] = this.fBasketEntry[i];
+        }
         ret[this.fMaxBaskets] = tree.getEntries();
         return ret;
     }
