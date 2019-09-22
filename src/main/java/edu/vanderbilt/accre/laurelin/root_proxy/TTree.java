@@ -24,16 +24,20 @@ public class TTree {
     private TFile file;
     private static final Logger logger = LogManager.getLogger();
 
+    private long entryStart;
+    private long entryStop;
 
-    public TTree(Proxy data, TFile file) {
+    public TTree(Proxy data, TFile file, long entryStart, long entryStop) {
         this.data = data;
         this.file = file;
+	this.entryStart = entryStart;
+	this.entryStop = entryStop;
         branches = new ArrayList<TBranch>();
         leaves = new ArrayList<TLeaf>();
         ProxyArray fBranches = (ProxyArray) data.getProxy("fBranches");
         for (Proxy val: fBranches) {
             // Drop branches with neither subbranches nor leaves
-            TBranch branch = new TBranch(val, this, null);
+            TBranch branch = new TBranch(val, this, null, this.entryStart, this.entryStop);
             if (branch.getBranches().size() != 0 || branch.getLeaves().size() != 0) {
                 branches.add(branch);
             } else {

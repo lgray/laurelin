@@ -17,6 +17,19 @@ public class TBranch {
     protected TBranch parent;
     protected TTree tree;
 
+    // metadata caches
+    private int fMaxBaskets;
+    private int[] fBasketBytes;
+    private long[] fBasketEntry;
+    private long[] fBasketSeek;
+
+    //short circuit
+    private long entryStart;
+    private long entryStop;
+    private int basketStart;
+    private int basketStop;
+
+
     public static class ArrayDescriptor implements Serializable {
         private static final long serialVersionUID = 1L;
         private boolean isFixed;
@@ -61,10 +74,19 @@ public class TBranch {
         }
     }
 
-    public TBranch(Proxy data, TTree tree, TBranch parent) {
+    public TBranch(Proxy data, TTree tree, TBranch parent, long entryStart, long entryStop) {
         this.data = data;
         this.parent = parent;
         this.tree = tree;
+	this.entryStart = entryStart;
+	this.entryStop = entryStop;
+	this.basketStart = -1;
+	this.basketStop = -1;
+
+	this.fMaxBaskets = -1;
+        this.fBasketBytes = null;
+        this.fBasketEntry = null;
+        this.fBasketSeek = null;
 
         branches = new ArrayList<TBranch>();
         if (getClass().equals(TBranch.class)) {
@@ -73,7 +95,7 @@ public class TBranch {
             isBranch = true;
             ProxyArray fBranches = (ProxyArray) data.getProxy("fBranches");
             for (Proxy val: fBranches) {
-                TBranch branch = new TBranch(val, tree, this);
+                TBranch branch = new TBranch(val, tree, this, entryStart, entryStop);
                 // Drop branches with neither subbranches nor leaves
                 if (branch.getBranches().size() != 0 || branch.getLeaves().size() != 0) {
                     if (branch.getName().startsWith("P3")) {
@@ -84,7 +106,7 @@ public class TBranch {
             }
             ProxyArray fLeaves = (ProxyArray) data.getProxy("fLeaves");
             for (Proxy val: fLeaves) {
-                TLeaf leaf = new TLeaf(val, tree, this);
+                TLeaf leaf = new TLeaf(val, tree, this, this.entryStart, this.entryStop);
                 if (leaf.typeUnhandled()) {
                     continue;
                 }
@@ -128,6 +150,14 @@ public class TBranch {
         return leaves;
     }
 
+    public int getBasketStart() {
+	return this.basketStart;
+    }
+
+    public int getBasketStop() {
+	return this.basketStop;
+    }
+
     /**
      * returns fType
      * @return ROOT type integer constant
@@ -148,6 +178,29 @@ public class TBranch {
         return fType;
     }
 
+    private void lazyGetBasketDescription() {
+	this.fMaxBaskets = (int) this.data.getScalar("fMaxBaskets").getVal();
+        this.fBasketBytes = (int[]) this.data.getScalar("fBasketBytes").getVal();
+        this.fBasketEntry = (long[]) this.data.getScalar("fBasketEntry").getVal();
+        this.fBasketSeek = (long[]) this.data.getScalar("fBasketSeek").getVal();
+
+	long[] offsets = new long[this.fMaxBaskets + 1];
+	System.arraycopy(this.fBasketEntry, 0,
+			 offsets, 0,
+			 this.fMaxBaskets);
+        offsets[this.fMaxBaskets] = tree.getEntries();
+	
+	for (int i = 0; i < this.fMaxBaskets; ++i) {
+            if( this.entryStart != -1 && offsets[i+1] < this.entryStart) continue;
+            else if ( this.entryStart != -1 && this.basketStart == -1 ) this.basketStart = i;
+            if( this.entryStop != -1 && this.entryStop < offsets[i]) {
+                if( this.basketStop == -1 ) this.basketStop = i;
+                continue;
+            }
+	}
+    }
+    
+
     private ArrayList<TBasket> lazyGetBaskets() {
 	/*
 	 * Instead of being in the ObjArray of fBaskets, ROOT stores the baskets in separate
@@ -156,13 +209,20 @@ public class TBranch {
 	 *     Long64_t   *fBasketEntry;      ///<[fMaxBaskets] Table of first entry in each basket
 	 *     Long64_t   *fBasketSeek;       ///<[fMaxBaskets] Addresses of baskets on file
 	 */
-	int fMaxBaskets = (int) this.data.getScalar("fMaxBaskets").getVal();
-	int[] fBasketBytes = (int[]) this.data.getScalar("fBasketBytes").getVal();
-	long[] fBasketEntry = (long[]) this.data.getScalar("fBasketEntry").getVal();
-	long[] fBasketSeek = (long[]) this.data.getScalar("fBasketSeek").getVal();
+	if( this.fMaxBaskets == -1 ) { lazyGetBasketDescription(); }
 	ArrayList<TBasket> thebaskets = new ArrayList<TBasket>();
+
+	long[] offsets = getBasketEntryOffsets();
+	
 	TFile backing = this.tree.getBackingFile();
 	for (int i = 0; i < fMaxBaskets; i += 1) {
+	    if( this.entryStart != -1 && offsets[i+1] < this.entryStart) continue;
+	    else if ( this.entryStart != -1 && this.basketStart == -1 ) this.basketStart = i;
+	    if( this.entryStop != -1 && this.entryStop < offsets[i]) {
+		if( this.basketStop == -1 ) this.basketStop = i;
+		continue;
+	    }
+
 	    Cursor c;
 	    if (fBasketSeek[i] == 0) {
 		// An empty basket?
@@ -176,6 +236,9 @@ public class TBranch {
 		throw new RuntimeException(e);
 	    }
 	}
+	if( this.entryStart == -1 ) this.basketStart = 0;
+	if( this.entryStop == -1 ) this.basketStop = this.fMaxBaskets;
+
 	return thebaskets;
     }
 
@@ -370,14 +433,14 @@ public class TBranch {
     }
 
     public long[] getBasketEntryOffsets() {
-        int basketCount = getBaskets().size();
+	if( this.fMaxBaskets == -1 ) { lazyGetBasketDescription(); }
         // The array processing code wants a final entry to cap the last true
         // basket from above
-        long []ret = new long[basketCount + 1];
-        for (int i = 0; i < basketCount; i += 1) {
-            ret[i] = baskets.get(i).getBasketEntry();
-        }
-        ret[basketCount] = tree.getEntries();
+        long []ret = new long[this.fMaxBaskets + 1];
+        System.arraycopy(this.fBasketEntry, 0,
+			 ret, 0,
+                         this.fMaxBaskets);
+        ret[this.fMaxBaskets] = tree.getEntries();
         return ret;
     }
 

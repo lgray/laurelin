@@ -68,7 +68,6 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
         private StructType schema;
         private long entryStart;
         private long entryEnd;
-        private Map<String, SlimTBranch> slimBranches;
         private CacheFactory basketCacheFactory;
         private int threadCount;
         private CollectionAccumulator<Storage> profileData;
@@ -86,7 +85,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
             this.profileData = profileData;
             this.pid = pid;
         }
-
+	
         @Override
         public InputPartitionReader<ColumnarBatch> createPartitionReader() {
             logger.trace("input partition reader");
@@ -99,8 +98,8 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
     }
 
     static class TTreeDataSourceV2PartitionReader implements InputPartitionReader<ColumnarBatch> {
-	private String path;
-	private String treeName;
+	private TFile file;
+	private TTree tree;
         private Cache basketCache;
         private StructType schema;
         private long entryStart;
@@ -112,41 +111,25 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
         private int pid;
         private static ROOTFileCache fileCache = new ROOTFileCache();
 
-	private static void parseStructFields(TTree inputTree, Map<String, SlimTBranch> slimBranches, StructType struct, String namespace) {
-	    for (StructField field: struct.fields())  {
-		if (field.dataType() instanceof StructType) {
-		    parseStructFields(inputTree, slimBranches, (StructType) field.dataType(), namespace + field.name() + ".");
-		}
-		ArrayList<TBranch> branchList = inputTree.getBranches(namespace + field.name());
-		assert branchList.size() == 1;
-		TBranch fatBranch = branchList.get(0);
-		SlimTBranch slimBranch = SlimTBranch.getFromTBranch(fatBranch);
-		slimBranches.put(fatBranch.getName(), slimBranch);
-	    }
-	}
-
-        public TTreeDataSourceV2PartitionReader(String path, String treeName, CacheFactory basketCacheFactory, StructType schema, long entryStart, long entryEnd, int threadCount, CollectionAccumulator<Storage> profileData, int pid) {
-	    this.path = path;
-	    this.treeName = treeName;
+        public TTreeDataSourceV2PartitionReader(String path, String treeName, CacheFactory basketCacheFactory, StructType schema, long entryStart, long entryEnd, int threadCount, CollectionAccumulator<Storage> profileData, int pid) {	    
             this.basketCache = basketCacheFactory.getCache();
             this.schema = schema;
             this.entryStart = entryStart;
             this.entryEnd = entryEnd;
+	    this.slimBranches = null;
             this.profileData = profileData;
             this.pid = pid;
-
-	    try {
-		logger.warn(path);
-
-		TFile inputFile = TFile.getFromFile(path);
-		TTree inputTree = new TTree(inputFile.getProxy(treeName), inputFile);
-		
-		this.slimBranches = new HashMap<String, SlimTBranch>();		
-		parseStructFields(inputTree, this.slimBranches, this.schema, "");
-	    } catch (Exception e) {
-		throw new RuntimeException(e);
-	    }
 	    
+	    try {
+                this.file = TFile.getFromFile(path);
+		this.tree = new TTree(this.file.getProxy(treeName), this.file, entryStart, entryEnd);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+	    
+	    this.slimBranches = new HashMap<String, SlimTBranch>();
+	    parseStructFields(this.tree, this.slimBranches, this.schema, "");
+
             Function<Event, Integer> cb = null;
             if (this.profileData != null) {
                 cb = e -> {
@@ -165,9 +148,29 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
             }
         }
 
+	private static void parseStructFields(TTree inputTree, Map<String, SlimTBranch> slimBranches, StructType struct, String namespace) {
+	    for (StructField field: struct.fields())  {
+		if (field.dataType() instanceof StructType) {
+		    parseStructFields(inputTree, slimBranches, (StructType) field.dataType(), namespace + field.name() + ".");
+		}
+		ArrayList<TBranch> branchList = inputTree.getBranches(namespace + field.name());
+		assert branchList.size() == 1;
+		TBranch fatBranch = branchList.get(0);
+		SlimTBranch slimBranch = SlimTBranch.getFromTBranch(fatBranch);
+		slimBranches.put(fatBranch.getName(), slimBranch);
+	    }
+	}
+
         @Override
         public void close() throws IOException {
             logger.trace("close");
+	    try {
+		this.file.close();
+            } catch (Exception e) {
+                throw new IOException(e);
+            }
+	    this.tree = null;
+	    this.file = null;
             // This will eventually go away due to GC, should I add
             // explicit closing too?
         }
@@ -229,6 +232,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
         private String treeName;
         private TTree currTree;
         private TFile currFile;
+	private int partitionsize;
         private CacheFactory basketCacheFactory;
         private StructType schema;
         private int threadCount;
@@ -248,7 +252,8 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
 	        // Only ever open one file at the driver and deserialize as little as possible 
                 currFile = TFile.getFromFile(fileCache.getROOTFile(this.paths.get(0)));
                 treeName = options.get("tree").orElse("Events");
-                currTree = new TTree(currFile.getProxy(treeName), currFile);
+		partitionsize = Integer.parseInt(options.get("partitionsize").orElse("200000"));
+                currTree = new TTree(currFile.getProxy(treeName), currFile, -1, -1);
                 this.basketCacheFactory = basketCacheFactory;
 		this.schema = readSchemaPriv();
             } catch (IOException e) {
@@ -364,12 +369,14 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
             private static final long serialVersionUID = 1L;
             String treeName;
             StructType schema;
+	    int partitionsize;
             int threadCount;
             CacheFactory basketCacheFactory;
 
-            public PartitionHelper(String treeName, StructType schema, int threadCount, CacheFactory basketCacheFactory) {
+            public PartitionHelper(String treeName, StructType schema, int partitionsize, int threadCount, CacheFactory basketCacheFactory) {
                 this.treeName = treeName; 
 		this.schema = schema;
+		this.partitionsize = partitionsize;
                 this.threadCount = threadCount;
                 this.basketCacheFactory = basketCacheFactory;
 	    }
@@ -387,21 +394,21 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
                 }
             }
 
-            public static Iterator<InputPartition<ColumnarBatch>> partitionSingleFileImpl(String path, String treeName, StructType schema, int threadCount, CacheFactory basketCacheFactory) {
+            public static Iterator<InputPartition<ColumnarBatch>> partitionSingleFileImpl(String path, String treeName, int partitionsize, StructType schema, int threadCount, CacheFactory basketCacheFactory) {
                 List<InputPartition<ColumnarBatch>> ret = new ArrayList<InputPartition<ColumnarBatch>>();
                 int pid = 0;
                 TTree inputTree;
+
                 try (TFile inputFile = TFile.getFromFile(path)) {
-                    inputTree = new TTree(inputFile.getProxy(treeName), inputFile);
+		    inputTree = new TTree(inputFile.getProxy(treeName), inputFile, -1, -1);
 		    // TODO We partition based on the basketing of the first branch
 		    //      which might not be optimal. We should do something
 		    //      smarter later
 		    // 1 file -> 1 partition for now
 		    long entryEnd = inputTree.getEntries();
-		    
-		    if( entryEnd > 0 ) {
-			pid+=1;
-			ret.add(new TTreeDataSourceV2Partition(path, treeName, schema, basketCacheFactory, 0, entryEnd, threadCount, profileData, pid));
+		    for(long i = 0; i < entryEnd; i += partitionsize) {
+			pid+=1;			
+			ret.add(new TTreeDataSourceV2Partition(path, treeName, schema, basketCacheFactory, i, Math.min(i+partitionsize,entryEnd), threadCount, profileData, pid));
 		    }		    
 		    if (ret.size() == 0) {
 			// Only one basket?
@@ -416,7 +423,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
             }
 
             FlatMapFunction<String, InputPartition<ColumnarBatch>> getLambda() {
-                return s -> PartitionHelper.partitionSingleFileImpl(s, treeName, schema, threadCount, basketCacheFactory);
+                return s -> PartitionHelper.partitionSingleFileImpl(s, treeName, partitionsize, this.schema, threadCount, basketCacheFactory);
             }
         }
 
@@ -430,8 +437,8 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
 		}
 	    } else {
 		JavaSparkContext sc = JavaSparkContext.fromSparkContext(sparkContext);
-		JavaRDD<String> rdd_paths = sc.parallelize(paths, paths.size());
-		PartitionHelper helper = new PartitionHelper(this.treeName, this.schema, threadCount, basketCacheFactory);
+		JavaRDD<String> rdd_paths = sc.parallelize(paths, paths.size());		
+		PartitionHelper helper = new PartitionHelper(this.treeName, this.schema, this.partitionsize, threadCount, basketCacheFactory);
 		JavaRDD<InputPartition<ColumnarBatch>> partitions = rdd_paths.flatMap(helper.getLambda());
 		ret = partitions.collect();
 	    }
@@ -444,12 +451,12 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
         }
 
         public Iterator<InputPartition<ColumnarBatch>> partitionSingleFile(String path) {
-            return PartitionHelper.partitionSingleFileImpl(path, treeName, this.schema, threadCount, basketCacheFactory);
+            return PartitionHelper.partitionSingleFileImpl(path, treeName, partitionsize, this.schema, threadCount, basketCacheFactory);
         }
 	
         @Override
         public void pruneColumns(StructType requiredSchema) {
-            logger.trace("prunecolumns ");
+            logger.trace("prunecolumns ");	    
             this.schema = requiredSchema;
         }
 
