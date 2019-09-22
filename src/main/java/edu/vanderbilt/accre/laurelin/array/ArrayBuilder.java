@@ -1,5 +1,6 @@
 package edu.vanderbilt.accre.laurelin.array;
 
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -64,7 +65,11 @@ public class ArrayBuilder {
         }
         for (int i = 1;  i < basketEntryOffsets.length;  i++) {
             if (basketEntryOffsets[i] < basketEntryOffsets[i - 1]) {
-                throw new IllegalArgumentException("basketEntryOffsets must be monotonically increasing");
+                throw new IllegalArgumentException("basketEntryOffsets must be monotonically increasing " + 
+						   Integer.toString(i) + " / " + Integer.toString(basketEntryOffsets.length) +
+						   ": "  + Long.toString(basketEntryOffsets[i]) +
+						   " ?>? " + Long.toString(basketEntryOffsets[i - 1]) +
+						   " offsets: " + Arrays.toString(basketEntryOffsets));
             }
         }
 
