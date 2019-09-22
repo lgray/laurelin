@@ -20,6 +20,7 @@ public class TBranch {
 
     // metadata caches
     private int fMaxBaskets;
+    private int fActualBaskets;
     private int[] fBasketBytes;
     private long[] fBasketEntry;
     private long[] fBasketSeek;
@@ -85,6 +86,7 @@ public class TBranch {
 	this.basketStop = -1;
 
 	this.fMaxBaskets = -1;
+	this.fActualBaskets = -1;
         this.fBasketBytes = null;
         this.fBasketEntry = null;
         this.fBasketSeek = null;
@@ -186,27 +188,29 @@ public class TBranch {
         this.fBasketSeek = (long[]) this.data.getScalar("fBasketSeek").getVal();
 
 	long[] offsets = new long[this.fMaxBaskets + 1];
-        for (int i = 0; i < this.fMaxBaskets; i += 1) {
-            offsets[i] = this.fBasketEntry[i];
+	this.fActualBaskets = 0;
+        for (int i = 0; i < this.fMaxBaskets; ++i) {
+	    if( this.fBasketSeek[i] != 0 ) {
+		offsets[this.fActualBaskets] = this.fBasketEntry[i];
+		++(this.fActualBaskets);
+	    }
         }
-        offsets[this.fMaxBaskets] = this.tree.getEntries();
+        offsets[this.fActualBaskets] = this.tree.getEntries();
 
-	if( this.fMaxBaskets != this.fBasketEntry.length ) {
-	    throw new IllegalArgumentException(Integer.toString(this.fMaxBaskets) + " (fMaxBaskets) != " + 
-					       Integer.toString(this.fBasketEntry.length) + " (fBasketEntry.length)\n");
-	}
-
-	for (int i = 1;  i < this.fBasketEntry.length;  i++) {
+	for (int i = 1;  i < this.fActualBaskets;  i++) {
             if (this.fBasketEntry[i] < this.fBasketEntry[i - 1]) {
                 throw new IllegalArgumentException("fBasketEntry must be monotonically increasing " +
                                                    Integer.toString(i) + " / " + Integer.toString(this.fBasketEntry.length) +
                                                    ": "  + Long.toString(this.fBasketEntry[i]) +
                                                    " ?>? " + Long.toString(this.fBasketEntry[i - 1]) +
-                                                   " offsets: " + Arrays.toString(this.fBasketEntry) + " file: " + this.tree.getBackingFile().getFileName());
+                                                   " offsets: " + Arrays.toString(this.fBasketEntry) + 
+						   " bytes: " + Arrays.toString(this.fBasketBytes) +
+						   " seek: " + Arrays.toString(this.fBasketSeek) +
+						   " file: " + this.tree.getBackingFile().getFileName());
             }
         }
 
-	for (int i = 1;  i < offsets.length;  i++) {
+	for (int i = 1;  i <= this.fActualBaskets;  i++) {
             if (offsets[i] < offsets[i - 1]) {
 		throw new IllegalArgumentException("offsets must be monotonically increasing " +
                                                    Integer.toString(i) + " / " + Integer.toString(offsets.length) +
@@ -216,10 +220,10 @@ public class TBranch {
             }
         }
 
-	for (int i = 0; i < this.fMaxBaskets; ++i) {
+	for (int i = 0; i <= this.fActualBaskets; ++i) {
             if( this.entryStart != -1 && offsets[i+1] < this.entryStart) continue;
             else if ( this.entryStart != -1 && this.basketStart == -1 ) this.basketStart = i;
-            if( this.entryStop != -1 && this.entryStop < offsets[i]) {
+            if( this.entryStop != -1 && this.entryStop <= offsets[i]) {
                 if( this.basketStop == -1 ) this.basketStop = i;
                 continue;
             }
@@ -238,16 +242,16 @@ public class TBranch {
 	if( this.fMaxBaskets == -1 ) { lazyGetBasketDescription(); }
 	ArrayList<TBasket> thebaskets = new ArrayList<TBasket>();
 
-	long[] offsets = getBasketEntryOffsets();
+	long[] offsets = new long[this.fMaxBaskets + 1];
+        for (int i = 0; i < this.fMaxBaskets; ++i) {
+	    offsets[i] = this.fBasketEntry[i];
+        }
+	offsets[this.fMaxBaskets] = this.tree.getEntries();
 	
 	TFile backing = this.tree.getBackingFile();
-	for (int i = 0; i < fMaxBaskets; i += 1) {
+	for (int i = 0; i < this.fMaxBaskets; i += 1) {
 	    if( this.entryStart != -1 && offsets[i+1] < this.entryStart) continue;
-	    else if ( this.entryStart != -1 && this.basketStart == -1 ) this.basketStart = i;
-	    if( this.entryStop != -1 && this.entryStop < offsets[i]) {
-		if( this.basketStop == -1 ) this.basketStop = i;
-		continue;
-	    }
+	    if( this.entryStop != -1 && this.entryStop < offsets[i]) continue;
 
 	    Cursor c;
 	    if (fBasketSeek[i] == 0) {
@@ -263,7 +267,9 @@ public class TBranch {
 	    }
 	}
 	if( this.entryStart == -1 ) this.basketStart = 0;
-	if( this.entryStop == -1 ) this.basketStop = this.fMaxBaskets;
+	if( this.entryStop == -1 ) this.basketStop = this.fActualBaskets;
+
+	assert this.fActualBaskets == thebaskets.size();
 
 	return thebaskets;
     }
@@ -459,14 +465,14 @@ public class TBranch {
     }
 
     public long[] getBasketEntryOffsets() {
-	if( this.fMaxBaskets == -1 ) { lazyGetBasketDescription(); }
+	if( this.fActualBaskets == -1 ) { lazyGetBasketDescription(); }
         // The array processing code wants a final entry to cap the last true
         // basket from above
-	long []ret = new long[this.fMaxBaskets + 1];
-        for (int i = 0; i < this.fMaxBaskets; i += 1) {
+	long []ret = new long[this.fActualBaskets + 1];
+        for (int i = 0; i < this.fActualBaskets; i += 1) {
             ret[i] = this.fBasketEntry[i];
         }
-        ret[this.fMaxBaskets] = tree.getEntries();
+        ret[this.fActualBaskets] = tree.getEntries();
         return ret;
     }
 
