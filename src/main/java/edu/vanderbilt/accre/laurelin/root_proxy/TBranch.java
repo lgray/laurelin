@@ -3,6 +3,7 @@ package edu.vanderbilt.accre.laurelin.root_proxy;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -189,7 +190,32 @@ public class TBranch {
             offsets[i] = this.fBasketEntry[i];
         }
         offsets[this.fMaxBaskets] = this.tree.getEntries();
-	
+
+	if( this.fMaxBaskets != this.fBasketEntry.length ) {
+	    throw new IllegalArgumentException(Integer.toString(this.fMaxBaskets) + " (fMaxBaskets) != " + 
+					       Integer.toString(this.fBasketEntry.length) + " (fBasketEntry.length)\n");
+	}
+
+	for (int i = 1;  i < this.fBasketEntry.length;  i++) {
+            if (this.fBasketEntry[i] < this.fBasketEntry[i - 1]) {
+                throw new IllegalArgumentException("fBasketEntry must be monotonically increasing " +
+                                                   Integer.toString(i) + " / " + Integer.toString(this.fBasketEntry.length) +
+                                                   ": "  + Long.toString(this.fBasketEntry[i]) +
+                                                   " ?>? " + Long.toString(this.fBasketEntry[i - 1]) +
+                                                   " offsets: " + Arrays.toString(this.fBasketEntry) + " file: " + this.tree.getBackingFile().getFileName());
+            }
+        }
+
+	for (int i = 1;  i < offsets.length;  i++) {
+            if (offsets[i] < offsets[i - 1]) {
+		throw new IllegalArgumentException("offsets must be monotonically increasing " +
+                                                   Integer.toString(i) + " / " + Integer.toString(offsets.length) +
+                                                   ": "  + Long.toString(offsets[i]) +
+                                                   " ?>? " + Long.toString(offsets[i - 1]) +
+                                                   " offsets: " + Arrays.toString(offsets));
+            }
+        }
+
 	for (int i = 0; i < this.fMaxBaskets; ++i) {
             if( this.entryStart != -1 && offsets[i+1] < this.entryStart) continue;
             else if ( this.entryStart != -1 && this.basketStart == -1 ) this.basketStart = i;
