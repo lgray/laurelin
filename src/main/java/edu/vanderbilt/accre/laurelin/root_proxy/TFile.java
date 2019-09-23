@@ -164,6 +164,10 @@ public class TFile implements AutoCloseable {
         return fileName;
     }
 
+    public ROOTFile getROOTFile() {
+	return fh;
+    }
+
     @Override
     public void close() throws Exception {
         fh.close();

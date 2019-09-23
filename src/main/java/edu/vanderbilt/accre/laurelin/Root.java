@@ -121,12 +121,12 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
             this.pid = pid;
 	    
 	    try {
-                this.file = TFile.getFromFile(path);
+                this.file = TFile.getFromFile(fileCache.getROOTFile(this.paths.get(0)));
 		this.tree = new TTree(this.file.getProxy(treeName), this.file, entryStart, entryEnd);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-	    
+
 	    this.slimBranches = new HashMap<String, SlimTBranch>();
 	    parseStructFields(this.tree, this.slimBranches, this.schema, "");
 
@@ -219,6 +219,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
                 rootType = SimpleType.fromString(field.metadata().getString("rootType"));
 
                 Dtype dtype = SimpleType.dtypeFromString(field.metadata().getString("rootType"));
+
                 vecs.add(new TTreeColumnVector(field.dataType(), rootType, dtype, basketCache, entryStart, entryEnd, slimBranch, executor, fileCache));
             }
             return vecs;
@@ -259,7 +260,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-            threadCount = options.getInt("threadCount", 16);
+            threadCount = options.getInt("threadCount", 0);
 
             Function<Event, Integer> cb = null;
             if (ioAccum != null) {
