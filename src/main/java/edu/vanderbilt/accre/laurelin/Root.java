@@ -171,6 +171,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
             }
 	    this.tree = null;
 	    this.file = null;
+	    this.slimBranches = null; // release data cache
             // This will eventually go away due to GC, should I add
             // explicit closing too?
         }
