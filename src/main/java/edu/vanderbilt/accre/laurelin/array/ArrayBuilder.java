@@ -209,6 +209,7 @@ public class ArrayBuilder {
                 local_entrystop = 0;
             }
 
+	    
             RawArray basketdata = getbasket.dataWithoutKey(i);
 
             Array source = null;

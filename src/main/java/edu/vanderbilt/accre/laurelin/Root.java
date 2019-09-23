@@ -126,7 +126,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-	    
+
 	    this.slimBranches = new HashMap<String, SlimTBranch>();
 	    parseStructFields(this.tree, this.slimBranches, this.schema, "");
 
@@ -219,6 +219,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
                 rootType = SimpleType.fromString(field.metadata().getString("rootType"));
 
                 Dtype dtype = SimpleType.dtypeFromString(field.metadata().getString("rootType"));
+		
                 vecs.add(new TTreeColumnVector(field.dataType(), rootType, dtype, basketCache, entryStart, entryEnd, slimBranch, executor));
             }
             return vecs;
@@ -258,7 +259,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-            threadCount = options.getInt("threadCount", 16);
+            threadCount = options.getInt("threadCount", 0);
 
             Function<Event, Integer> cb = null;
             if (ioAccum != null) {

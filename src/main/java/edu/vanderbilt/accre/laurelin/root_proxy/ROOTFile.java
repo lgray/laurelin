@@ -151,11 +151,13 @@ public class ROOTFile {
     }
 
     private FileInterface fh;
+    private String path;
     protected FileProfiler profile;
 
     /* Hide constructor */
     private ROOTFile(String path) {
         profile = IOProfile.getInstance().beginProfile(path);
+	this.path = path;
     }
 
     public static ROOTFile getInputFile(String path) throws IOException {
@@ -201,6 +203,10 @@ public class ROOTFile {
 
     public Cursor getCursor(long off) {
         return new Cursor(new FileBackedBuf(this), off);
+    }
+
+    public String getPath() {
+	return this.path;
     }
 
     public void close() throws IOException {

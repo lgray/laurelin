@@ -150,6 +150,10 @@ public class TFile {
         return fileName;
     }
 
+    public ROOTFile getROOTFile() {
+	return fh;
+    }
+
     public void close() throws Exception {
 	fh.close();
     }

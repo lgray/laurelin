@@ -24,24 +24,27 @@ import edu.vanderbilt.accre.laurelin.root_proxy.TBranch;
  */
 public class SlimTBranch implements Serializable {
     private static final long serialVersionUID = 1L;
-    private String path;
+    private ROOTFile parentFile; // in the new schema the file is garaunteed open throughout the life cycle of SlimTBranch
     private long []basketEntryOffsets;
     private List<SlimTBasket> baskets;
     private TBranch.ArrayDescriptor arrayDesc;
     private int basketStartOffset;
     private int maxBasket;
+    private String name;
 
-    public SlimTBranch(String path, long []basketEntryOffsets, TBranch.ArrayDescriptor desc, int basketStartOffset, int maxBasket) {
-        this.path = path;
+    public SlimTBranch(ROOTFile parentFile, String name, long []basketEntryOffsets, TBranch.ArrayDescriptor desc, int basketStartOffset, int maxBasket) {
+        this.parentFile = parentFile;
         this.basketEntryOffsets = basketEntryOffsets;
         this.baskets = new LinkedList<SlimTBasket>();
         this.arrayDesc = desc;
 	this.basketStartOffset = basketStartOffset;
 	this.maxBasket = maxBasket;
+	this.name = name;
     }
 
     public static SlimTBranch getFromTBranch(TBranch fatBranch) {
-        SlimTBranch slimBranch = new SlimTBranch(fatBranch.getTree().getBackingFile().getFileName(), 
+        SlimTBranch slimBranch = new SlimTBranch(fatBranch.getTree().getBackingFile().getROOTFile(), 
+						 fatBranch.getName(),
 						 fatBranch.getBasketEntryOffsets(),
 						 fatBranch.getArrayDescriptor(),
 						 fatBranch.getBasketStart(),
@@ -59,23 +62,20 @@ public class SlimTBranch implements Serializable {
         return slimBranch;
     }
 
+    public String getName() {
+	return name;
+    }
+
     public long [] getBasketEntryOffsets() {
         return basketEntryOffsets;
     }
 
     public SlimTBasket getBasket(int basketid) {
-	//System.out.print("\tGetting basketid: ");
-	//System.out.print(basketid);
-	//System.out.print("\n");
 	int relative_basket = basketid;
 	if( this.basketStartOffset > -1 ) {
 	    assert (this.maxBasket == -1 || basketid < this.maxBasket);
 	    relative_basket = basketid - this.basketStartOffset;
 	}
-	//System.out.print("\tGetting relative basketid: ");
-        //System.out.print(relative_basket);
-        //System.out.print("\n");
-
         return baskets.get(relative_basket);
     }
 
@@ -84,7 +84,11 @@ public class SlimTBranch implements Serializable {
     }
 
     public String getPath() {
-        return path;
+        return parentFile.getPath();
+    }
+
+    public ROOTFile getParentFile() {
+	return parentFile;
     }
 
     public TBranch.ArrayDescriptor getArrayDesc() {
@@ -121,11 +125,10 @@ public class SlimTBranch implements Serializable {
             try {
                 // the last event of each basket is guaranteed to be unique and
                 // stable
-                ROOTFile tmpFile = ROOTFile.getInputFile(path);
-                RawArray data = basketCache.get(tmpFile, basket.getLast());
+                RawArray data = basketCache.get(parentFile, branch.getName(), basket.getLast());
                 if (data == null) {
                     data = new RawArray(basket.getPayload());
-                    basketCache.put(tmpFile, basket.getLast(), data);
+                    basketCache.put(parentFile, branch.getName(), basket.getLast(), data);
                 }
                 return data;
             } catch (IOException e) {
@@ -177,7 +180,7 @@ public class SlimTBranch implements Serializable {
             return new String(hexChars);
         }
         private void initializePayload() throws IOException {
-            ROOTFile tmpFile = ROOTFile.getInputFile(branch.getPath());
+            ROOTFile tmpFile = branch.getParentFile(); 
             Cursor fileCursor = tmpFile.getCursor(offset);
             this.payload = fileCursor.getPossiblyCompressedSubcursor(0,
                     compressedLen,
