@@ -30,6 +30,7 @@ public class Cache {
     }
 
     public RawArray put(ROOTFile backingFile, String branch, int last, RawArray data) {
+	System.out.print("Cache::put -> " + backingFile.getPath() + " " + branch + " " + Integer.toString(last) + "\n");
         WeakHashMap<String, WeakHashMap<Integer, SoftReference<RawArray>>> fileMap = null;
         while (fileMap == null) {
             fileMap = cache.get(backingFile);
