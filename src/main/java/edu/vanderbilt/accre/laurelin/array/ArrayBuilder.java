@@ -129,6 +129,11 @@ public class ArrayBuilder {
                 basket_entryoffset[j] = basket_entryoffset[j - 1] + (int)numentries;
             }
 
+	    System.out.print("basket start / stop: " + Integer.toString(basketstart) + " / " + Integer.toString(basketstop) + "\n");
+	    System.out.print("basketEntryOffsets : " + Arrays.toString(basketEntryOffsets) + "\n");
+	    System.out.print("basket_entryoffset : " + Arrays.toString(basket_entryoffset) + "\n");
+	    
+
             array = interpretation.destination((int)totalitems, (int)totalentries);
 
             tasks = new ArrayList<FutureTask<Boolean>>(basketstop - basketstart);
