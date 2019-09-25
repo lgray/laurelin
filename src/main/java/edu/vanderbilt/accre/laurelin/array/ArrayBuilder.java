@@ -129,17 +129,59 @@ public class ArrayBuilder {
                 basket_entryoffset[j] = basket_entryoffset[j - 1] + (int)numentries;
             }
 
-	    System.out.print("basket start / stop: " + Integer.toString(basketstart) + " / " + Integer.toString(basketstop) + "\n");
-	    System.out.print("basketEntryOffsets : " + Arrays.toString(basketEntryOffsets) + "\n");
-	    System.out.print("basket_entryoffset : " + Arrays.toString(basket_entryoffset) + "\n");
-	    
-
             array = interpretation.destination((int)totalitems, (int)totalentries);
 
             tasks = new ArrayList<FutureTask<Boolean>>(basketstop - basketstart);
 
+	    int partitionItemOffset = 0;
+	    int partitionEntryOffset = 0;
+
+	    if (basketstart > 0) {
+		// if we're later on in the root file we need to offset the callable fill in a global way
+		int local_entrystart = (int)(entrystart - basketEntryOffsets[basketstart]);
+		if (local_entrystart < 0) {
+		    local_entrystart = 0;
+		}
+		int local_entrystop = (int)(entrystop - basketEntryOffsets[basketstart]);
+		if (local_entrystop > (int)(basketEntryOffsets[basketstart + 1] - basketEntryOffsets[basketstart])) {
+		    local_entrystop = (int)(basketEntryOffsets[basketstart + 1] - basketEntryOffsets[basketstart]);
+		}
+		if (local_entrystop < 0) {
+		    local_entrystop = 0;
+		}
+		partitionEntryOffset  = local_entrystart;
+
+		// now to get the item offset
+		RawArray basketdata = getbasket.dataWithoutKey(basketstart);
+
+		Array source = null;
+		int border = basketkeys[0].fLast - basketkeys[0].fKeylen;
+
+		if (basketkeys[0].fObjlen == border) {
+		    basketdata = interpretation.convertBufferDiskToMemory(basketdata);
+		    source = interpretation.fromroot(basketdata, null, partitionEntryOffset, local_entrystop);
+		} else {
+		    RawArray content = basketdata.slice(0, border);
+		    PrimitiveArray.Int4 byteoffsets = new PrimitiveArray.Int4(basketdata.slice(border + 4, basketkeys[0].fObjlen)).add(true, -basketkeys[0].fKeylen);
+		    byteoffsets.put(byteoffsets.length() - 1, border);
+		    content = interpretation.subarray().convertBufferDiskToMemory(content);
+		    byteoffsets = interpretation.subarray().convertOffsetDiskToMemory(byteoffsets);
+		    source = interpretation.fromroot(content, byteoffsets, local_entrystart, local_entrystop);
+		}
+
+		int expecteditems = basket_itemoffset[1] - basket_itemoffset[0];
+		int source_numitems = interpretation.source_numitems(source);
+		partitionItemOffset = expecteditems - source_numitems;
+	    }
+
+	    for(int j = 0; j < basketstop - basketstart; j++) {
+		basket_itemoffset[j] -= partitionItemOffset;
+		basket_entryoffset[j] -= partitionEntryOffset;
+	    }
+
             for (int j = 0;  j < basketstop - basketstart;  j++) {
-                CallableFill fill = new CallableFill(interpretation, getbasket, j, basketkeys, array, entrystart, entrystop, basketstart, basketstop, basket_itemoffset, basket_entryoffset, basketEntryOffsets);
+                CallableFill fill = new CallableFill(interpretation, getbasket, j, basketkeys, array, entrystart, entrystop, basketstart, basketstop, basket_itemoffset, basket_entryoffset, basketEntryOffsets,
+						     partitionItemOffset, partitionEntryOffset);
 
                 if (executor == null) {
                     fill.call();
@@ -179,8 +221,10 @@ public class ArrayBuilder {
         int[] basket_itemoffset;
         int[] basket_entryoffset;
         long[] basketEntryOffsets;
+	int partitionEntryOffset;
+	int partitionItemOffset;
 
-        CallableFill(Interpretation interpretation, GetBasket getbasket, int j, BasketKey[] basketkeys, Array destination, long entrystart, long entrystop, int basketstart, int basketstop, int[] basket_itemoffset, int[] basket_entryoffset, long[] basketEntryOffsets) {
+        CallableFill(Interpretation interpretation, GetBasket getbasket, int j, BasketKey[] basketkeys, Array destination, long entrystart, long entrystop, int basketstart, int basketstop, int[] basket_itemoffset, int[] basket_entryoffset, long[] basketEntryOffsets, int partitionItemOffset, int partitionEntryOffset) {
             this.interpretation = interpretation;
             this.getbasket = getbasket;
             this.j = j;
@@ -193,6 +237,8 @@ public class ArrayBuilder {
             this.basket_itemoffset = basket_itemoffset;
             this.basket_entryoffset = basket_entryoffset;
             this.basketEntryOffsets = basketEntryOffsets;
+	    this.partitionItemOffset = partitionItemOffset;
+	    this.partitionEntryOffset = partitionEntryOffset;
         }
 
         @Override
@@ -213,7 +259,6 @@ public class ArrayBuilder {
             if (local_entrystop < 0) {
                 local_entrystop = 0;
             }
-
 	    
             RawArray basketdata = getbasket.dataWithoutKey(i);
 
@@ -238,7 +283,7 @@ public class ArrayBuilder {
             int expectedentries = basket_entryoffset[j + 1] - basket_entryoffset[j];
             int source_numentries = local_entrystop - local_entrystart;
 
-            if (j + 1 == basketstop - basketstart) {
+            if ( (j + 1 == basketstop - basketstart) && (basketstop - basketstart > 2) ) {
                 if (expecteditems > source_numitems) {
                     basket_itemoffset[j + 1] -= expecteditems - source_numitems;
                 }
@@ -246,14 +291,14 @@ public class ArrayBuilder {
                     basket_entryoffset[j + 1] -= expectedentries - source_numentries;
                 }
             } else if (j == 0) {
-                if (expecteditems > source_numitems) {
-                    basket_itemoffset[j] += expecteditems - source_numitems;
-                }
-                if (expectedentries > source_numentries) {
-                    basket_entryoffset[j] += expectedentries - source_numentries;
-                }
+		if (expecteditems > source_numitems) {
+		    basket_itemoffset[j] += expecteditems - source_numitems;
+		}
+		if (expectedentries > source_numentries) {
+		    basket_entryoffset[j] += expectedentries - source_numentries;
+		}
             }
-
+	    
             interpretation.fill(source,
                                 destination,
                                 basket_itemoffset[j],

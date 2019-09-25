@@ -27,13 +27,12 @@ public class JaggedArrayPrep extends Array {
     private void allocateOffsets() {
         ByteBuffer offsetsbuf = ByteBuffer.allocate((this.counts.length() + 1) * 4);
         int last = 0;
-        int startpos = this.counts.get(0);
         offsetsbuf.putInt(last);
         for (int i = 0; i < this.counts.length(); i++) {
             last += this.counts.get(i);
             offsetsbuf.putInt(last);
         }
-        offsetsbuf.flip();
+        offsetsbuf.position(0);
         this.offsets = new PrimitiveArray.Int4(new RawArray(offsetsbuf));
     }
 
