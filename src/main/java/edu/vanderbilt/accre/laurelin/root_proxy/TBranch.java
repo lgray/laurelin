@@ -220,7 +220,7 @@ public class TBranch {
             }
         }
 
-	for (int i = 0; i <= this.fActualBaskets; ++i) {
+	for (int i = 0; i < this.fActualBaskets; ++i) {
             if( this.entryStart != -1 && offsets[i+1] < this.entryStart) continue;
             else if ( this.entryStart != -1 && this.basketStart == -1 ) this.basketStart = i;
             if( this.entryStop != -1 && this.entryStop <= offsets[i]) {
@@ -228,8 +228,8 @@ public class TBranch {
                 continue;
             }
 	}
-	if( this.entryStart == -1 ) this.basketStart = 0;
-        if( this.entryStop == -1 ) this.basketStop = this.fActualBaskets;
+	if( this.entryStart == -1 || this.basketStart == -1) this.basketStart = 0;
+        if( this.entryStop == -1 || this.basketStop == -1) this.basketStop = this.fActualBaskets;
 	
     }
     
@@ -244,12 +244,6 @@ public class TBranch {
 	 */
 	if( this.fMaxBaskets == -1 ) { lazyGetBasketDescription(); }
 	ArrayList<TBasket> thebaskets = new ArrayList<TBasket>();
-
-	long[] offsets = new long[this.fMaxBaskets + 1];
-        for (int i = 0; i < this.fMaxBaskets; ++i) {
-	    offsets[i] = this.fBasketEntry[i];
-        }
-	offsets[this.fMaxBaskets] = this.tree.getEntries();
 	
 	TFile backing = this.tree.getBackingFile();
 	for (int i = this.basketStart; i < this.basketStop; ++i) {
@@ -261,7 +255,6 @@ public class TBranch {
 	    try {
 		c = backing.getCursorAt(fBasketSeek[i]);
 		TBasket b = TBasket.getFromFile(c, fBasketBytes[i], fBasketEntry[i], fBasketSeek[i]);
-		System.out.print(this.getName() + " got basket with last event -> " + Integer.toString(b.getLast()) + "\n");
 		thebaskets.add(b);
 	    } catch (IOException e) {
 		throw new RuntimeException(e);

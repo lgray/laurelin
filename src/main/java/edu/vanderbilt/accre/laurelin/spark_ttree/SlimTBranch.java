@@ -123,13 +123,11 @@ public class SlimTBranch implements Serializable {
         public RawArray dataWithoutKey(int basketid) {
             SlimTBasket basket = branch.getBasket(basketid);
             try {
-                // the last event of each basket is guaranteed to be unique and
-                // stable
-		System.out.print("BranchCallback dataWithoutKey get -> " + parentFile.getPath() + " " + branch.getName() + " " + Integer.toString(basket.getLast()) + "\n");
-                RawArray data = basketCache.get(parentFile, branch.getName(), basket.getLast());
+		// the absolute basket ID for a given branch is garaunteed to be unique and stable....
+                RawArray data = basketCache.get(parentFile, branch.getName(), basketid);
                 if (data == null) {
                     data = new RawArray(basket.getPayload());
-                    basketCache.put(parentFile, branch.getName(), basket.getLast(), data);
+                    basketCache.put(parentFile, branch.getName(), basketid, data);
                 }
                 return data;
             } catch (IOException e) {
