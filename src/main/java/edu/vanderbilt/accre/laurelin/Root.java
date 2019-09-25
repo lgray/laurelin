@@ -109,7 +109,6 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
         private static ThreadPoolExecutor executor;
         private CollectionAccumulator<Storage> profileData;
         private int pid;
-        private static ROOTFileCache fileCache = new ROOTFileCache();
 
         public TTreeDataSourceV2PartitionReader(String path, String treeName, CacheFactory basketCacheFactory, StructType schema, long entryStart, long entryEnd, int threadCount, CollectionAccumulator<Storage> profileData, int pid) {	    
             this.basketCache = basketCacheFactory.getCache();
@@ -121,7 +120,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
             this.pid = pid;
 	    
 	    try {
-                this.file = TFile.getFromFile(fileCache.getROOTFile(this.paths.get(0)));
+		this.file = TFile.getFromFile(path);
 		this.tree = new TTree(this.file.getProxy(treeName), this.file, entryStart, entryEnd);
             } catch (Exception e) {
                 throw new RuntimeException(e);
@@ -221,7 +220,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
 
                 Dtype dtype = SimpleType.dtypeFromString(field.metadata().getString("rootType"));
 
-                vecs.add(new TTreeColumnVector(field.dataType(), rootType, dtype, basketCache, entryStart, entryEnd, slimBranch, executor, fileCache));
+                vecs.add(new TTreeColumnVector(field.dataType(), rootType, dtype, basketCache, entryStart, entryEnd, slimBranch, executor));
             }
             return vecs;
         }
