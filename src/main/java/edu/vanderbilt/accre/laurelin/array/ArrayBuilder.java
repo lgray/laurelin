@@ -129,6 +129,12 @@ public class ArrayBuilder {
                 basket_entryoffset[j] = basket_entryoffset[j - 1] + (int)numentries;
             }
 
+	    /*
+	    System.out.print("basket start / stop: " + Integer.toString(basketstart) + " / " + Integer.toString(basketstop) + "\n");
+	    System.out.print("basketEntryOffsets : " + Arrays.toString(basketEntryOffsets) + "\n");
+	    System.out.print("basket_entryoffset : " + Arrays.toString(basket_entryoffset) + "\n");
+	    */
+
             array = interpretation.destination((int)totalitems, (int)totalentries);
 
             tasks = new ArrayList<FutureTask<Boolean>>(basketstop - basketstart);
@@ -173,12 +179,20 @@ public class ArrayBuilder {
 		int source_numitems = interpretation.source_numitems(source);
 		partitionItemOffset = expecteditems - source_numitems;
 	    }
+	    /*
+	    System.out.print("Partition entry / item offsets: " + partitionEntryOffset + " / " + partitionItemOffset + "\n");
 
-	    for(int j = 0; j < basketstop - basketstart; j++) {
+	    System.out.print("Starting basket_entryoffsets: " + Arrays.toString(basket_entryoffset) + "\n");
+            System.out.print("Starting basket_itemoffets:   " + Arrays.toString(basket_itemoffset) + "\n");
+	    */
+	    for(int j = 0; j < 1 + basketstop - basketstart; j++) {
 		basket_itemoffset[j] -= partitionItemOffset;
 		basket_entryoffset[j] -= partitionEntryOffset;
 	    }
-
+	    /*
+	    System.out.print("Modified basket_entryoffsets: " + Arrays.toString(basket_entryoffset) + "\n");
+	    System.out.print("Modified basket_itemoffets:   " + Arrays.toString(basket_itemoffset) + "\n");
+	    */
             for (int j = 0;  j < basketstop - basketstart;  j++) {
                 CallableFill fill = new CallableFill(interpretation, getbasket, j, basketkeys, array, entrystart, entrystop, basketstart, basketstop, basket_itemoffset, basket_entryoffset, basketEntryOffsets,
 						     partitionItemOffset, partitionEntryOffset);
@@ -282,31 +296,41 @@ public class ArrayBuilder {
 
             int expectedentries = basket_entryoffset[j + 1] - basket_entryoffset[j];
             int source_numentries = local_entrystop - local_entrystart;
-
-            if ( (j + 1 == basketstop - basketstart) && (basketstop - basketstart > 2) ) {
-                if (expecteditems > source_numitems) {
-                    basket_itemoffset[j + 1] -= expecteditems - source_numitems;
-                }
-                if (expectedentries > source_numentries) {
-                    basket_entryoffset[j + 1] -= expectedentries - source_numentries;
-                }
-            } else if (j == 0) {
+	    /*
+            System.out.print("\tCallableFill::call basket_entryoffset : " + Arrays.toString(basket_entryoffset) + "\n");
+	    System.out.print("\tCallableFill::call basket_itemoffset : " + Arrays.toString(basket_itemoffset) + "\n");
+	    */
+	    if ( j + 1 == basketstop - basketstart && j > 0 ) {
+		if (expecteditems > source_numitems) {
+		    basket_itemoffset[j + 1] -= expecteditems - source_numitems;
+		}
+		if (expectedentries > source_numentries) {
+		    basket_entryoffset[j + 1] -= expectedentries - source_numentries;
+		}
+	    } else if (j == 0) {
+		/*
+		System.out.print("\tCallableFill:call item / entry offset correction: " + Integer.toString(expecteditems - source_numitems) + 
+				 " / " + Integer.toString(expectedentries - source_numentries) + "\n");
+		*/
 		if (expecteditems > source_numitems) {
 		    basket_itemoffset[j] += expecteditems - source_numitems;
 		}
 		if (expectedentries > source_numentries) {
 		    basket_entryoffset[j] += expectedentries - source_numentries;
 		}
-            }
+	    }
+	    /*
+            System.out.print("\tCallableFill::call basket_entryoffset : " + Arrays.toString(basket_entryoffset) + "\n");
+	    System.out.print("\tCallableFill::call basket_itemoffset : " + Arrays.toString(basket_itemoffset) + "\n");
+	    */
+	    interpretation.fill(source,
+				destination,
+				basket_itemoffset[j],
+				basket_itemoffset[j + 1],
+				basket_entryoffset[j],
+				basket_entryoffset[j + 1]);
 	    
-            interpretation.fill(source,
-                                destination,
-                                basket_itemoffset[j],
-                                basket_itemoffset[j + 1],
-                                basket_entryoffset[j],
-                                basket_entryoffset[j + 1]);
-
-            return true;
-        }
+	    return true;
+	}
     }
 }
