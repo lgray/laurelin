@@ -27,6 +27,10 @@ public class TTree {
     private long entryStart;
     private long entryStop;
 
+    public TTree(Proxy data, TFile file) {
+	this(data, file, -1, -1);
+    }
+
     public TTree(Proxy data, TFile file, long entryStart, long entryStop) {
         this.data = data;
         this.file = file;
