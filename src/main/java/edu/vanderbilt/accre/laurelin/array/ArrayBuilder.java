@@ -300,7 +300,7 @@ public class ArrayBuilder {
             System.out.print("\tCallableFill::call basket_entryoffset : " + Arrays.toString(basket_entryoffset) + "\n");
 	    System.out.print("\tCallableFill::call basket_itemoffset : " + Arrays.toString(basket_itemoffset) + "\n");
 	    */
-	    if ( j + 1 == basketstop - basketstart && j > 0 ) {
+	    if ( j + 1 == basketstop - basketstart ) {
 		if (expecteditems > source_numitems) {
 		    basket_itemoffset[j + 1] -= expecteditems - source_numitems;
 		}
