@@ -142,7 +142,7 @@ public class ArrayBuilder {
 	    int partitionItemOffset = 0;
 	    int partitionEntryOffset = 0;
 
-	    if (basketstart > 0) {
+	    if (basketstart > 0 ) {
 		// if we're later on in the root file we need to offset the callable fill in a global way
 		int local_entrystart = (int)(entrystart - basketEntryOffsets[basketstart]);
 		if (local_entrystart < 0) {
@@ -162,11 +162,13 @@ public class ArrayBuilder {
 
 		Array source = null;
 		int border = basketkeys[0].fLast - basketkeys[0].fKeylen;
+		int isJagged = 0;
 
 		if (basketkeys[0].fObjlen == border) {
 		    basketdata = interpretation.convertBufferDiskToMemory(basketdata);
 		    source = interpretation.fromroot(basketdata, null, partitionEntryOffset, local_entrystop);
 		} else {
+		    isJagged = 1;
 		    RawArray content = basketdata.slice(0, border);
 		    PrimitiveArray.Int4 byteoffsets = new PrimitiveArray.Int4(basketdata.slice(border + 4, basketkeys[0].fObjlen)).add(true, -basketkeys[0].fKeylen);
 		    byteoffsets.put(byteoffsets.length() - 1, border);
@@ -177,7 +179,7 @@ public class ArrayBuilder {
 
 		int expecteditems = basket_itemoffset[1] - basket_itemoffset[0];
 		int source_numitems = interpretation.source_numitems(source);
-		partitionItemOffset = expecteditems - source_numitems;
+		partitionItemOffset = (expecteditems - source_numitems);
 	    }
 	    /*
 	    System.out.print("Partition entry / item offsets: " + partitionEntryOffset + " / " + partitionItemOffset + "\n");
@@ -278,11 +280,14 @@ public class ArrayBuilder {
 
             Array source = null;
             int border = basketkeys[j].fLast - basketkeys[j].fKeylen;
+	    boolean isJagged = false;
 
             if (basketkeys[j].fObjlen == border) {
+		//System.out.print("flat array local_entrystart / stop" + Integer.toString(local_entrystart) + " / " + Integer.toString(local_entrystop) + "\n");
                 basketdata = interpretation.convertBufferDiskToMemory(basketdata);
                 source = interpretation.fromroot(basketdata, null, local_entrystart, local_entrystop);
             } else {
+		isJagged = true;
                 RawArray content = basketdata.slice(0, border);
                 PrimitiveArray.Int4 byteoffsets = new PrimitiveArray.Int4(basketdata.slice(border + 4, basketkeys[j].fObjlen)).add(true, -basketkeys[j].fKeylen);
                 byteoffsets.put(byteoffsets.length() - 1, border);
@@ -299,8 +304,10 @@ public class ArrayBuilder {
 	    /*
             System.out.print("\tCallableFill::call basket_entryoffset : " + Arrays.toString(basket_entryoffset) + "\n");
 	    System.out.print("\tCallableFill::call basket_itemoffset : " + Arrays.toString(basket_itemoffset) + "\n");
+
+	    System.out.print("j / basketstop - basketstop = " + Integer.toString(j) + " / " + Integer.toString(basketstop - basketstart) + "\n");
 	    */
-	    if ( j + 1 == basketstop - basketstart ) {
+	    if ( (j + 1 == basketstop - basketstart) && (isJagged || j > 0) ) {
 		if (expecteditems > source_numitems) {
 		    basket_itemoffset[j + 1] -= expecteditems - source_numitems;
 		}
@@ -310,7 +317,7 @@ public class ArrayBuilder {
 	    } else if (j == 0) {
 		/*
 		System.out.print("\tCallableFill:call item / entry offset correction: " + Integer.toString(expecteditems - source_numitems) + 
-				 " / " + Integer.toString(expectedentries - source_numentries) + "\n");
+				 " / " + Integer.toString(expectedentries - source_numentries) + "\n");		
 		*/
 		if (expecteditems > source_numitems) {
 		    basket_itemoffset[j] += expecteditems - source_numitems;

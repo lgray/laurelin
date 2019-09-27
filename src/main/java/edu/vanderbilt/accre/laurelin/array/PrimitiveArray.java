@@ -54,6 +54,11 @@ public abstract class PrimitiveArray extends Array {
          * the same backing array after duplicate()
          */
         ByteBuffer tmp = this.buffer.duplicate();
+	/*
+	System.out.print("item start / stop: " + Integer.toString(itemstart) + " / " + Integer.toString(itemstop) + "\n");
+        System.out.print("byte start / stop: " + Integer.toString(bytestart) + " / " + Integer.toString(bytestop) + "\n");
+        System.out.print("buf pos / limit  : " + Integer.toString(tmp.position()) + " / " + Integer.toString(tmp.limit()) + "\n");
+	*/
         tmp.position(bytestart);
         tmp.limit(bytestop);
         ByteBuffer srctmp = source.buffer.duplicate();
