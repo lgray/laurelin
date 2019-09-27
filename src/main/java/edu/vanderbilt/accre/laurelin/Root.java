@@ -418,7 +418,10 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
 			ret.add(new TTreeDataSourceV2Partition(path, treeName, schema, basketCacheFactory, 0, inputTree.getEntries(), threadCount, profileData, pid));
 		    }
 		} catch (Exception e) {
-		    throw new RuntimeException(e);
+		    logger.error("TTreeDataSourceV2Reader::PartitionHelper unable to process file: " + path);
+		    logger.error("TTreeDataSourceV2Reader::PartitionHelper treeName = " + treeName + " partitionSize = " + Integer.toString(partitionsize));
+		    logger.error("TTreeDataSourceV2Reader::PartitionHelper skipping file!");
+		    ret = new ArrayList<InputPartition<ColumnarBatch>>();
 		}
                 return ret.iterator();
             }
