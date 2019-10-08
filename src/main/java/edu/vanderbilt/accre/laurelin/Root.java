@@ -201,6 +201,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
         private TFile currFile;
         private CacheFactory basketCacheFactory;
         private StructType schema;
+	private int partitionsize;
         private int threadCount;
         private IOProfile profiler;
         private static CollectionAccumulator<Storage> profileData;
@@ -218,6 +219,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
                 // FIXME - More than one file, please
                 currFile = TFile.getFromFile(fileCache.getROOTFile(this.paths.get(0)));
                 treeName = options.get("tree").orElse("Events");
+		partitionsize = Integer.parseInt(options.get("partitionsize").orElse("200000"));
                 currTree = new TTree(currFile.getProxy(treeName), currFile);
                 this.basketCacheFactory = basketCacheFactory;
                 this.schema = readSchemaPriv();
@@ -335,11 +337,13 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
             String treeName;
             StructType schema;
             int threadCount;
+	    int partitionsize;
             CacheFactory basketCacheFactory;
 
-            public PartitionHelper(String treeName, StructType schema, int threadCount, CacheFactory basketCacheFactory) {
+            public PartitionHelper(String treeName, StructType schema, int partitionsize, int threadCount, CacheFactory basketCacheFactory) {
                 this.treeName = treeName;
                 this.schema = schema;
+		this.partitionsize = partitionsize;
                 this.threadCount = threadCount;
                 this.basketCacheFactory = basketCacheFactory;
             }
@@ -357,7 +361,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
                 }
             }
 
-            public static Iterator<InputPartition<ColumnarBatch>> partitionSingleFileImpl(String path, String treeName, StructType schema, int threadCount, CacheFactory basketCacheFactory) {
+            public static Iterator<InputPartition<ColumnarBatch>> partitionSingleFileImpl(String path, String treeName, StructType schema, int partitionsize, int threadCount, CacheFactory basketCacheFactory) {
                 List<InputPartition<ColumnarBatch>> ret = new ArrayList<InputPartition<ColumnarBatch>>();
                 int pid = 0;
                 TTree inputTree;
@@ -373,23 +377,17 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
                     // TODO We partition based on the basketing of the first branch
                     //      which might not be optimal. We should do something
                     //      smarter later
-                    long[] entryOffset = inputTree.getBranches().get(0).getBasketEntryOffsets();
-                    for (int i = 0; i < (entryOffset.length - 1); i += 1) {
-                        pid += 1;
-                        long entryStart = entryOffset[i];
-                        long entryEnd = entryOffset[i + 1];
-                        // the last basket is dumb and annoying
-                        if (i == (entryOffset.length - 1)) {
-                            entryEnd = inputTree.getEntries();
-                        }
-
-                        ret.add(new TTreeDataSourceV2Partition(schema, basketCacheFactory, entryStart, entryEnd, slimBranches, threadCount, profileData, pid));
-                    }
+		    long entryEnd = inputTree.getEntries();
+		    long nParts = (entryEnd / partitionsize) + 1;
+		    for(long i = 0; i < nParts; i += 1) {
+			pid+=1;
+			ret.add(new TTreeDataSourceV2Partition(schema, basketCacheFactory, i * partitionsize, Math.min((i + 1) * partitionsize, entryEnd), slimBranches, threadCount, profileData, pid));
+		    }   
                     if (ret.size() == 0) {
                         // Only one basket?
                         logger.debug("Planned for zero baskets, adding a dummy one");
                         pid += 1;
-                        ret.add(new TTreeDataSourceV2Partition(schema, basketCacheFactory, 0, inputTree.getEntries(), slimBranches, threadCount, profileData, pid));
+                        ret.add(new TTreeDataSourceV2Partition(schema, basketCacheFactory, 0, entryEnd, slimBranches, threadCount, profileData, pid));
                     }
                     return ret.iterator();
                 } catch (Exception e) {
@@ -399,7 +397,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
             }
 
             FlatMapFunction<String, InputPartition<ColumnarBatch>> getLambda() {
-                return s -> PartitionHelper.partitionSingleFileImpl(s, treeName, schema, threadCount, basketCacheFactory);
+                return s -> PartitionHelper.partitionSingleFileImpl(s, treeName, schema, partitionsize, threadCount, basketCacheFactory);
             }
         }
 
@@ -414,7 +412,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
             } else {
                 JavaSparkContext sc = JavaSparkContext.fromSparkContext(sparkContext);
                 JavaRDD<String> rdd_paths = sc.parallelize(paths, paths.size());
-                PartitionHelper helper = new PartitionHelper(treeName, schema, threadCount, basketCacheFactory);
+                PartitionHelper helper = new PartitionHelper(treeName, schema, partitionsize, threadCount, basketCacheFactory);
                 JavaRDD<InputPartition<ColumnarBatch>> partitions = rdd_paths.flatMap(helper.getLambda());
                 ret = partitions.collect();
             }
@@ -427,7 +425,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
         }
 
         public Iterator<InputPartition<ColumnarBatch>> partitionSingleFile(String path) {
-            return PartitionHelper.partitionSingleFileImpl(path, treeName, schema, threadCount, basketCacheFactory);
+            return PartitionHelper.partitionSingleFileImpl(path, treeName, schema, partitionsize, threadCount, basketCacheFactory);
         }
 
         @Override
