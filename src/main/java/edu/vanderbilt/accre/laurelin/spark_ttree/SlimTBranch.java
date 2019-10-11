@@ -5,6 +5,7 @@ import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.HashMap;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -27,22 +28,22 @@ public class SlimTBranch implements Serializable, SlimTBranchInterface {
     private static final long serialVersionUID = 1L;
     private String path;
     private long []basketEntryOffsets;
-    private List<SlimTBasket> baskets;
+    private HashMap<Integer, SlimTBasket> baskets;
     private TBranch.ArrayDescriptor arrayDesc;
 
     public SlimTBranch(String path, long []basketEntryOffsets, TBranch.ArrayDescriptor desc) {
         this.path = path;
         this.basketEntryOffsets = basketEntryOffsets;
-        this.baskets = new LinkedList<SlimTBasket>();
+        this.baskets = new HashMap<Integer, SlimTBasket>();
         this.arrayDesc = desc;
     }
 
     public static SlimTBranch getFromTBranch(TBranch fatBranch) {
         SlimTBranch slimBranch = new SlimTBranch(fatBranch.getTree().getBackingFile().getFileName(), fatBranch.getBasketEntryOffsets(), fatBranch.getArrayDescriptor());
-        for (int i = 0; i < fatBranch.getBasketCount(); i += 1) {
+        for (int i = fatBranch.getBasketStart(); i < fatBranch.getBasketStop(); i += 1) {
             SlimTBasket slimBasket = SlimTBasket.makeLazyBasket(slimBranch,
                                                         fatBranch.getBasketSeek()[i]);
-            slimBranch.addBasket(slimBasket);
+            slimBranch.addBasket(i, slimBasket);
         }
         return slimBranch;
     }
@@ -58,8 +59,8 @@ public class SlimTBranch implements Serializable, SlimTBranchInterface {
     }
 
     @Override
-    public void addBasket(SlimTBasket basket) {
-        baskets.add(basket);
+    public void addBasket(int basketid, SlimTBasket basket) {
+        baskets.put(basketid, basket);
     }
 
     @Override

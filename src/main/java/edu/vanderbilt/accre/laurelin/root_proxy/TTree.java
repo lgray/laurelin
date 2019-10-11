@@ -25,22 +25,26 @@ public class TTree {
     private static final Logger logger = LogManager.getLogger();
 
 
-    public TTree(Proxy data, TFile file) {
-        this.data = data;
+    public TTree(Proxy data, TFile file, long entrystart, long entrystop) {
+	this.data = data;
         this.file = file;
         branches = new ArrayList<TBranch>();
         leaves = new ArrayList<TLeaf>();
         ProxyArray fBranches = (ProxyArray) data.getProxy("fBranches");
         for (Proxy val: fBranches) {
-            // Drop branches with neither subbranches nor leaves
-            TBranch branch = new TBranch(val, this, null);
+            // Drop branches with neither subbranches nor leaves                                                                                                                                                
+            TBranch branch = new TBranch(val, this, null, entrystart, entrystop);
             if (branch.getBranches().size() != 0 || branch.getLeaves().size() != 0) {
                 branches.add(branch);
             } else {
-                // TODO: would be good to have a "one-off" log4j log
+                // TODO: would be good to have a "one-off" log4j log                                                                                                                                            
                 logger.info("Ignoring unparsable/empty branch \"{}\"", branch.getName());
             }
         }
+    }
+
+    public TTree(Proxy data, TFile file) {
+	this(data, file, -1L, -1L);
     }
 
     public TFile getBackingFile() {

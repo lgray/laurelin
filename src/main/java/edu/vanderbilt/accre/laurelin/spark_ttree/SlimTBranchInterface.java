@@ -12,7 +12,7 @@ public interface SlimTBranchInterface {
 
     SlimTBasket getBasket(int basketid);
 
-    void addBasket(SlimTBasket basket);
+    void addBasket(int basketid, SlimTBasket basket);
 
     String getPath();
 

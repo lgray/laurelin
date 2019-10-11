@@ -16,6 +16,10 @@ public class TBranch {
     private int[] fBasketBytes;
     private long[] fBasketEntry;
     private long[] fBasketSeek;
+    private long entrystart = -1;
+    private long entrystop = -1;
+    private int basketstart = -1;
+    private int basketstop = -1;
 
     protected boolean isBranch;
     protected TBranch parent;
@@ -65,20 +69,21 @@ public class TBranch {
         }
     }
 
-    public TBranch(Proxy data, TTree tree, TBranch parent) {
+    public TBranch(Proxy data, TTree tree, TBranch parent, long entrystart, long entrystop) {
         this.data = data;
         this.parent = parent;
         this.tree = tree;
+	this.entrystart = entrystart;
+	this.entrystop = entrystop;
 
         branches = new ArrayList<TBranch>();
-
 
         if (getClass().equals(TBranch.class)) {
             leaves = new ArrayList<TLeaf>();
             isBranch = true;
             ProxyArray fBranches = (ProxyArray) data.getProxy("fBranches");
             for (Proxy val: fBranches) {
-                TBranch branch = new TBranch(val, tree, this);
+                TBranch branch = new TBranch(val, tree, this, entrystart, entrystop);
                 // Drop branches with neither subbranches nor leaves
                 if (branch.getBranches().size() != 0 || branch.getLeaves().size() != 0) {
                     if (branch.getName().startsWith("P3")) {
@@ -127,9 +132,13 @@ public class TBranch {
                     fBasketBytes[j] = fBasketBytesTmp[i];
                     fBasketEntry[j] = fBasketEntryTmp[i];
                     fBasketSeek[j] = fBasketSeekTmp[i];
+		    if (entrystart > -1 && this.basketstart == -1 && fBasketEntry[j] >= entrystart) this.basketstart = j;
+		    if (entrystop > -1 && this.basketstop == -1 && fBasketEntry[j] > entrystop) this.basketstop = j;
                     j += 1;
                 }
             }
+	    if (this.basketstart == -1) this.basketstart = 0;
+	    if (this.basketstop == -1) this.basketstop = nonEmptyBaskets;
             fMaxBaskets = nonEmptyBaskets;
         } else {
             isBranch = false;
@@ -187,6 +196,22 @@ public class TBranch {
             fType = fType - Constants.kOffsetL;
         }
         return fType;
+    }
+
+    public long getEntryStart() {
+	return this.entrystart;
+    }
+    
+    public long getEntryStop() {
+	return this.entrystop;
+    }
+    
+    public int getBasketStart() { 
+	return this.basketstart;
+    }
+
+    public int getBasketStop() {
+	return this.basketstop;
     }
 
     public synchronized List<TBasket> getBaskets() {
