@@ -17,7 +17,9 @@ public class TTreeDataSourceIntegrationTest {
         System.setProperty("hadoop.home.dir", "/");
         spark = SparkSession.builder()
                 .master("local[*]")
-                .appName("test").getOrCreate();
+	        .appName("test")
+	        .config("spark.driver.memory","5G")
+	        .config("spark.testing.memory","2147480000").getOrCreate();
     }
 
     @Test
