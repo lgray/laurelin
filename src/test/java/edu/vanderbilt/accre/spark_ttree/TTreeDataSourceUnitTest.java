@@ -104,6 +104,7 @@ public class TTreeDataSourceUnitTest {
         Map<String, String> optmap = new HashMap<String, String>();
         optmap.put("path", "testdata/uproot-foriter.root");
         optmap.put("tree",  "foriter");
+	optmap.put("partitionsize", "6");
         DataSourceOptions opts = new DataSourceOptions(optmap);
         Root source = new Root();
         TTreeDataSourceV2Reader reader = (TTreeDataSourceV2Reader) source.createReader(opts, null, true);

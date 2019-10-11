@@ -116,7 +116,7 @@ public class TTreeColumnVectorTest {
         }
 
         @Override
-        public void addBasket(SlimTBasket basket) {
+        public void addBasket(int basketid, SlimTBasket basket) {
             throw new UnsupportedOperationException("Not stubbed");
         }
 
