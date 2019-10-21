@@ -13,9 +13,9 @@ public class TBranch {
     private ArrayList<TLeaf> leaves;
     private ArrayList<TBasket> lazyBasketStorage;
     private int fMaxBaskets = 0;
-    private int[] fBasketBytes;
-    private long[] fBasketEntry;
-    private long[] fBasketSeek;
+    private int[] fBasketBytes = null;
+    private long[] fBasketEntry = null;
+    private long[] fBasketSeek = null;
     private long entrystart = -1;
     private long entrystop = -1;
     private int basketstart = -1;
@@ -100,46 +100,6 @@ public class TBranch {
                 }
                 leaves.add(leaf);
             }
-            /*
-             * Instead of being in the ObjArray of fBaskets, ROOT stores the baskets in separate
-             * toplevel entries in the file
-             *     Int_t      *fBasketBytes;      ///<[fMaxBaskets] Length of baskets on file
-             *     Long64_t   *fBasketEntry;      ///<[fMaxBaskets] Table of first entry in each basket
-             *     Long64_t   *fBasketSeek;       ///<[fMaxBaskets] Addresses of baskets on file
-             */
-            fMaxBaskets = (int) data.getScalar("fMaxBaskets").getVal();
-            int[] fBasketBytesTmp = (int[]) data.getScalar("fBasketBytes").getVal();
-            long[] fBasketEntryTmp = (long[]) data.getScalar("fBasketEntry").getVal();
-            long[] fBasketSeekTmp = (long[]) data.getScalar("fBasketSeek").getVal();
-
-            /*
-             *  Root sometimes makes zero-length/empty baskets, so we need to
-             *  trim them to preserve the invariant in ArrayBuilder that the
-             *  values are monotonically increasing
-             */
-            int nonEmptyBaskets = 0;
-            for (int i = 0; i < fMaxBaskets; i += 1) {
-                if (fBasketSeekTmp[i] != 0) {
-                    nonEmptyBaskets += 1;
-                }
-            }
-            fBasketBytes = new int[nonEmptyBaskets];
-            fBasketEntry = new long[nonEmptyBaskets];
-            fBasketSeek = new long[nonEmptyBaskets];
-            int j = 0;
-            for (int i = 0; i < nonEmptyBaskets; i += 1) {
-                if (fBasketSeekTmp[i] != 0) {
-                    fBasketBytes[j] = fBasketBytesTmp[i];
-                    fBasketEntry[j] = fBasketEntryTmp[i];
-                    fBasketSeek[j] = fBasketSeekTmp[i];
-		    if (entrystart > -1 && this.basketstart == -1 && fBasketEntry[j] >= entrystart) this.basketstart = j;
-		    if (entrystop > -1 && this.basketstop == -1 && fBasketEntry[j] > entrystop) this.basketstop = j;
-                    j += 1;
-                }
-            }
-	    if (this.basketstart == -1) this.basketstart = 0;
-	    if (this.basketstop == -1) this.basketstop = nonEmptyBaskets;
-            fMaxBaskets = nonEmptyBaskets;
         } else {
             isBranch = false;
         }
@@ -221,7 +181,53 @@ public class TBranch {
         return lazyBasketStorage;
     }
 
+    private void loadBasketMetadata() { 
+	/*                                                                                                                                                                                                                
+	 * Instead of being in the ObjArray of fBaskets, ROOT stores the baskets in separate                                                                                                                              
+	 * toplevel entries in the file                                                                                                                                                                                   
+	 *     Int_t      *fBasketBytes;      ///<[fMaxBaskets] Length of baskets on file                                                                                                                                 
+	 *     Long64_t   *fBasketEntry;      ///<[fMaxBaskets] Table of first entry in each basket                                                                                                                       
+	 *     Long64_t   *fBasketSeek;       ///<[fMaxBaskets] Addresses of baskets on file                                                                                                                              
+	 */
+	fMaxBaskets = (int) data.getScalar("fMaxBaskets").getVal();
+	int[] fBasketBytesTmp = (int[]) data.getScalar("fBasketBytes").getVal();
+	long[] fBasketEntryTmp = (long[]) data.getScalar("fBasketEntry").getVal();
+	long[] fBasketSeekTmp = (long[]) data.getScalar("fBasketSeek").getVal();
+
+	/*                                                                                                                                                                                                                
+	 *  Root sometimes makes zero-length/empty baskets, so we need to                                                                                                                                                 
+	 *  trim them to preserve the invariant in ArrayBuilder that the                                                                                                                                                  
+	 *  values are monotonically increasing                                                                                                                                                                           
+	 */
+	int nonEmptyBaskets = 0;
+	for (int i = 0; i < fMaxBaskets; i += 1) {
+	    if (fBasketSeekTmp[i] != 0) {
+		nonEmptyBaskets += 1;
+	    }
+	}
+	fBasketBytes = new int[nonEmptyBaskets];
+	fBasketEntry = new long[nonEmptyBaskets];
+	fBasketSeek = new long[nonEmptyBaskets];
+	int j = 0;
+	for (int i = 0; i < nonEmptyBaskets; i += 1) {
+	    if (fBasketSeekTmp[i] != 0) {
+		fBasketBytes[j] = fBasketBytesTmp[i];
+		fBasketEntry[j] = fBasketEntryTmp[i];
+		fBasketSeek[j] = fBasketSeekTmp[i];
+		if (entrystart > -1 && this.basketstart == -1 && fBasketEntry[j] >= entrystart) this.basketstart = j;
+		if (entrystop > -1 && this.basketstop == -1 && fBasketEntry[j] > entrystop) this.basketstop = j;
+		j += 1;
+	    }
+	}
+	if (this.basketstart == -1) this.basketstart = 0;
+	if (this.basketstop == -1) this.basketstop = nonEmptyBaskets;
+	fMaxBaskets = nonEmptyBaskets;
+    }
+
     private void loadBaskets() {
+	if (fBasketBytes == null) {
+	    loadBasketMetadata();
+	}
         lazyBasketStorage = new ArrayList<TBasket>();
         TFile backing = tree.getBackingFile();
         for (int i = 0; i < fMaxBaskets; i += 1) {
@@ -424,6 +430,9 @@ public class TBranch {
     }
 
     public long[] getBasketEntryOffsets() {
+	if (fBasketBytes == null) {
+            loadBasketMetadata();
+	}
         int basketCount = fBasketEntry.length;
         // The array processing code wants a final entry to cap the last true
         // basket from above
@@ -444,14 +453,23 @@ public class TBranch {
     }
 
     public int getBasketCount() {
+	if (fBasketBytes == null) {
+            loadBasketMetadata();
+	}
         return fMaxBaskets;
     }
 
     public int[] getBasketBytes() {
+	if (fBasketBytes == null) {
+            loadBasketMetadata();
+	}
         return fBasketBytes;
     }
 
     public long[] getBasketSeek() {
+	if (fBasketBytes == null) {
+            loadBasketMetadata();
+	}
         return fBasketSeek;
     }
 }
