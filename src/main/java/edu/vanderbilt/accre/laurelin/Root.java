@@ -237,18 +237,26 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
         public TTreeDataSourceV2Reader(DataSourceOptions options, CacheFactory basketCacheFactory, SparkContext sparkContext, CollectionAccumulator<Storage> ioAccum) {
             logger.trace("construct ttreedatasourcev2reader");
             this.sparkContext = sparkContext;
+	    this.currTree = null;
+	    this.currFile = null;
+	    this.treeName = options.get("tree").orElse("Events");
+	    this.partitionsize = Integer.parseInt(options.get("partitionsize").orElse("200000"));
+	    this.basketCacheFactory = basketCacheFactory;
+	    this.schema = null;
             try {
                 this.paths = new LinkedList<String>();
-                for (String path: options.paths()) {
-                    this.paths.addAll(IOFactory.expandPathToList(path));
+		System.out.println("before filling paths!");
+		// check the first path, add and expand the rest later!
+		String[] in_paths = options.paths();
+		//this.paths.addAll(IOFactory.expandPathToList(in_paths[0]));
+                for (int i = 0; i < in_paths.length; ++i) {
+		    if( in_paths[i].endsWith(".root") ) {
+			this.paths.add(in_paths[i]);
+		    } else {
+			this.paths.addAll(IOFactory.expandPathToList(in_paths[i]));
+		    }
                 }
-                // FIXME - More than one file, please
-                currFile = TFile.getFromFile(fileCache.getROOTFile(this.paths.get(0)));
-                treeName = options.get("tree").orElse("Events");
-		partitionsize = Integer.parseInt(options.get("partitionsize").orElse("200000"));
-                currTree = new TTree(currFile.getProxy(treeName), currFile);
-                this.basketCacheFactory = basketCacheFactory;
-                this.schema = readSchemaPriv();
+		System.out.println("after filling paths: " + Integer.toString(this.paths.size()));
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -267,8 +275,19 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
 
         @Override
         public StructType readSchema() {
+	    if( this.schema == null ) lazyGenSchema();
             return schema;
         }
+
+	private void lazyGenSchema() {
+	    try {
+                currFile = TFile.getFromFile(fileCache.getROOTFile(this.paths.get(0)));
+                currTree = new TTree(currFile.getProxy(treeName), currFile);
+                this.schema = readSchemaPriv();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+	}
 
         private StructType readSchemaPriv() {
             logger.trace("readschemapriv");
@@ -417,6 +436,7 @@ public class Root implements DataSourceV2, ReadSupport, DataSourceRegister {
         public List<InputPartition<ColumnarBatch>> planBatchInputPartitions() {
             logger.trace("planbatchinputpartitions");
             List<InputPartition<ColumnarBatch>> ret = new ArrayList<InputPartition<ColumnarBatch>>();
+	    if( this.schema == null ) lazyGenSchema();
             if (sparkContext == null) {
                 for (String path: paths) {
                     partitionSingleFile(path).forEachRemaining(ret::add);;
